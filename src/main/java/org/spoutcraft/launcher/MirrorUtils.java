@@ -21,8 +21,7 @@ import org.spoutcraft.launcher.exception.NoMirrorsAvailableException;
 
 public class MirrorUtils {
 
-	public static final String[]	MIRRORS_URL	= { "http://git.technicpack.net/Technic/mirrors.yml", 
-		"https://raw.github.com/TechnicPack/Technic/master/mirrors.yml" };
+	public static final String[]	MIRRORS_URL	= { "http://mirror.technicpack.net/Technic/mirrors.yml", "https://raw.github.com/TechnicPack/Technic/master/mirrors.yml" };
 	public static File						mirrorsYML	= new File(GameUpdater.workDir, "mirrors.yml");
 	private static Map<String, Integer> mirrors = null;
 	private static boolean				updated			= false;
