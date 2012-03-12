@@ -23,6 +23,7 @@ import org.spoutcraft.launcher.MirrorUtils;
 import org.spoutcraft.launcher.ModpackBuild;
 import org.spoutcraft.launcher.Util;
 import org.spoutcraft.launcher.async.Download;
+import org.spoutcraft.launcher.exception.DownloadsFailedException;
 
 public class ModPackUpdater extends GameUpdater {
 
@@ -31,51 +32,50 @@ public class ModPackUpdater extends GameUpdater {
 	private static final String	baseFallbackURL			= "http://technic.freeworldsgaming.com/";
 	private static final String	fallbackModsURL			= baseFallbackURL + "mods/";
 
-	public void updateModPackMods() {
-		try {
+	/**
+	 * 
+	 * @throws IOException
+	 */
+	@SuppressWarnings("unchecked")
+	public void updateModPackMods() throws IOException, DownloadsFailedException {
+		Map<String, Object> modLibrary = (Map<String, Object>) ModLibraryYML.getModLibraryYML().getProperty("mods");
+		Map<String, Object> currentModList = ModpackBuild.getSpoutcraftBuild().getMods();
 
-			Map<String, Object> modLibrary = (Map<String, Object>) ModLibraryYML.getModLibraryYML().getProperty("mods");
-			Map<String, Object> currentModList = ModpackBuild.getSpoutcraftBuild().getMods();
+		// Remove Mods no longer in previous version
+		removeOldMods(currentModList.keySet());
 
-			// Remove Mods no longer in previous version
-			removeOldMods(currentModList.keySet());
+		for (Map.Entry<String, Object> modEntry2 : currentModList.entrySet()) {
+			String modName = modEntry2.getKey();
 
-			for (Map.Entry<String, Object> modEntry2 : currentModList.entrySet()) {
-				String modName = modEntry2.getKey();
+			if (!modLibrary.containsKey(modName)) { throw new IOException(String.format("Mod '%s' is missing from the mod library", modName)); }
 
-				if (!modLibrary.containsKey(modName)) { throw new IOException(String.format("Mod '%s' is missing from the mod library", modName)); }
+			Map<String, Object> modProperties = (Map<String, Object>) modLibrary.get(modName);
+			Map<String, Object> modVersions = (Map<String, Object>) modProperties.get("versions");
 
-				Map<String, Object> modProperties = (Map<String, Object>) modLibrary.get(modName);
-				Map<String, Object> modVersions = (Map<String, Object>) modProperties.get("versions");
+			String version = modEntry2.getValue().toString();
 
-				String version = modEntry2.getValue().toString();
+			if (!modVersions.containsKey(version)) { throw new IOException(String.format("Mod '%s' version '%s' is missing from the mod library", modName, version)); }
 
-				if (!modVersions.containsKey(version)) { throw new IOException(String.format("Mod '%s' version '%s' is missing from the mod library", modName, version)); }
+			String installType = modProperties.containsKey("installtype") ? (String) modProperties.get("installtype") : "zip";
+			String fullFilename = modName + "-" + version + "." + installType;
+			Boolean isOptional = modProperties.containsKey("optional") ? (Boolean) modProperties.get("optional") : false;
 
-				String installType = modProperties.containsKey("installtype") ? (String) modProperties.get("installtype") : "zip";
-				String fullFilename = modName + "-" + version + "." + installType;
-				Boolean isOptional = modProperties.containsKey("optional") ? (Boolean) modProperties.get("optional") : false;
+			String installedModVersion = InstalledModsYML.getInstalledModVersion(modName);
 
-				String installedModVersion = InstalledModsYML.getInstalledModVersion(modName);
-
-				// If installed mods md5 hash is the same as server's version
-				// then go to next mod.
-				if (installedModVersion != null && installedModVersion.equals(version)) {
-					String md5ModPath = String.format("mods/%s/%s", modName, fullFilename);
-					if (MD5Utils.checksumCachePath(fullFilename, md5ModPath)) {
-						continue;
-					}
-				}
-
-				File modFile = new File(tempDir, fullFilename);
-
-				// If have the mod file then update
-				if (downloadModPackage(modName, fullFilename, modFile)) {
-					updateMod(modFile, modName, version);
+			// If installed mods md5 hash is the same as server's version
+			// then go to next mod.
+			if (installedModVersion != null && installedModVersion.equals(version)) {
+				String md5ModPath = String.format("mods/%s/%s", modName, fullFilename);
+				if (MD5Utils.checksumCachePath(fullFilename, md5ModPath)) {
+					continue;
 				}
 			}
-		} catch (IOException e) {
-			e.printStackTrace();
+
+			File modFile = new File(tempDir, fullFilename);
+
+			// If have the mod file then update
+			downloadModPackage(modName, fullFilename, modFile);
+			updateMod(modFile, modName, version);
 		}
 	}
 
@@ -95,29 +95,24 @@ public class ModPackUpdater extends GameUpdater {
 
 	}
 
-	public boolean downloadModPackage(String name, String filename, File downloadedFile) {
-		try {
-			// Install from cache if md5 matches otherwise download and insert
-			// to cache
-			File modCache = new File(cacheDir, filename);
-			String md5Name = "mods\\" + name + "\\" + filename;
-			if (modCache.exists() && MD5Utils.checksumCachePath(filename, md5Name)) {
-				stateChanged("Copying " + filename + " from cache", 0);
-				copy(modCache, downloadedFile);
-				stateChanged("Copied " + filename + " from cache", 100);
-				return true;
-			} else {
-				String mirrorURL = "mods/" + name + "/" + filename;
-				String fallbackURL = fallbackModsURL + name + "/" + filename;
-				String url = MirrorUtils.getMirrorUrl(mirrorURL, fallbackURL, this);
-				String fileMD5 = MD5Utils.getMD5FromList(mirrorURL);
-				Download download = DownloadUtils.downloadFile(url, downloadedFile.getPath(), filename, fileMD5, this);
-				return download.isSuccess();
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
+	public void downloadModPackage(String name, String filename, File downloadedFile) 
+			throws IOException, DownloadsFailedException {
+		// Install from cache if md5 matches otherwise download and insert
+		// to cache
+		File modCache = new File(cacheDir, filename);
+		String md5Name = "mods\\" + name + "\\" + filename;
+		if (modCache.exists() && MD5Utils.checksumCachePath(filename, md5Name)) {
+			stateChanged("Copying " + filename + " from cache", 0);
+			copy(modCache, downloadedFile);
+			stateChanged("Copied " + filename + " from cache", 100);
+			return;
+		} else {
+			String mirrorURL = "mods/" + name + "/" + filename;
+			String fallbackURL = fallbackModsURL + name + "/" + filename;
+			String url = MirrorUtils.getMirrorUrl(mirrorURL, fallbackURL, this);
+			String fileMD5 = MD5Utils.getMD5FromList(mirrorURL);
+			DownloadUtils.downloadFile(url, downloadedFile.getPath(), filename, fileMD5, this);
 		}
-		return false;
 	}
 
 	public boolean createJar(File jarFilename, File... filesToAdd) {

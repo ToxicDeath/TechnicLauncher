@@ -1,6 +1,8 @@
 package org.spoutcraft.launcher;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
@@ -14,18 +16,24 @@ import javax.net.ssl.HttpsURLConnection;
 
 import org.bukkit.util.config.Configuration;
 import org.spoutcraft.launcher.async.DownloadListener;
+import org.spoutcraft.launcher.exception.DownloadsFailedException;
+import org.spoutcraft.launcher.exception.NoMirrorsAvailableException;
 
 public class MirrorUtils {
 
-	public static final String[]	MIRRORS_URL	= { "http://git.technicpack.net/Technic/mirrors.yml", "https://raw.github.com/TechnicPack/Technic/master/mirrors.yml" };
+	public static final String[]	MIRRORS_URL	= { "http://git.technicpack.net/Technic/mirrors.yml", 
+		"https://raw.github.com/TechnicPack/Technic/master/mirrors.yml" };
 	public static File						mirrorsYML	= new File(GameUpdater.workDir, "mirrors.yml");
+	private static Map<String, Integer> mirrors = null;
 	private static boolean				updated			= false;
 	private static final Random		rand				= new Random();
 
-	public static String getMirrorUrl(String mirrorURI, String fallbackUrl, DownloadListener listener) {
+	/**
+	 * @throws IOException when no mirror is accessible(including fallbackUrl)
+	 */
+	public static String getMirrorUrl(String relativePath, String fallbackUrl, 
+			DownloadListener listener) throws NoMirrorsAvailableException {
 		try {
-			if (Main.isOffline) return null;
-
 			Map<String, Integer> mirrors = getMirrors();
 			Set<Entry<String, Integer>> set = mirrors.entrySet();
 
@@ -47,7 +55,7 @@ public class MirrorUtils {
 					count += current.getValue();
 					String url = current.getKey();
 					if (count > random) {
-						String mirror = (!url.contains("github.com")) ? "http://" + url + "/" + mirrorURI : "https://" + url + "/" + mirrorURI;
+						String mirror = (!url.contains("github.com")) ? "http://" + url + "/" + relativePath : "https://" + url + "/" + relativePath;
 						if (isAddressReachable(mirror)) {
 							return mirror;
 						} else {
@@ -57,7 +65,7 @@ public class MirrorUtils {
 				}
 
 				if (set.size() == 1) {
-					return null;
+					break;
 				} else {
 					total -= current.getValue();
 					random = rand.nextInt(total);
@@ -65,21 +73,34 @@ public class MirrorUtils {
 					iterator = set.iterator();
 				}
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
+		} catch (FileNotFoundException e) {
+			Util.log("No mirrors.yml file available for download.");
 		}
-		System.err.println("All mirrors failed, reverting to default");
-		return fallbackUrl;
+
+		if (fallbackUrl != null && isAddressReachable(fallbackUrl)) {
+			Util.log("All mirrors failed, reverting to default: %s", fallbackUrl);
+			return fallbackUrl;
+		}
+		
+		throw new NoMirrorsAvailableException("No mirrors available for file" + relativePath);
 	}
 
-	public static String getMirrorUrl(String mirrorURI, String fallbackUrl) {
+	public static String getMirrorUrl(String mirrorURI, String fallbackUrl) 
+			throws NoMirrorsAvailableException {
 		return getMirrorUrl(mirrorURI, fallbackUrl, null);
 	}
 
-	@SuppressWarnings("unchecked")
-	public static Map<String, Integer> getMirrors() {
-		Configuration config = getMirrorsYML();
-		return (Map<String, Integer>) config.getProperty("mirrors");
+	private static Map<String, Integer> getMirrors() throws FileNotFoundException {
+		if (mirrors != null) {
+			return mirrors;
+		}
+
+		updateMirrorsYMLCache();
+		
+		if (mirrors == null) {
+			throw new FileNotFoundException("Can't read mirrors.yml.");
+		}
+		return mirrors;
 	}
 
 	public static boolean isAddressReachable(String url) {
@@ -116,18 +137,41 @@ public class MirrorUtils {
 		return false;
 	}
 
-	public static Configuration getMirrorsYML() {
-		updateMirrorsYMLCache();
+	@SuppressWarnings("unchecked")
+	private static void parseMirrorsFile() throws FileNotFoundException {
+		if (!mirrorsYML.canRead()) {
+			throw new FileNotFoundException("file mirrors.yml can't be read.");
+		}
+		
 		Configuration config = new Configuration(mirrorsYML);
-		config.load();
-		return config;
+		mirrors = (Map<String, Integer>) config.getProperty("mirrors");
 	}
 
-	public static void updateMirrorsYMLCache() {
-		if (updated) { return; }
-		updated = true;
+	/**
+	 * @return false if mirror.yml couldn't be updated(but an offline version exists)
+	 * @throws FileNotFoundException When mirrors.yml doesn't exist
+	 */
+	public static boolean updateMirrorsYMLCache() throws FileNotFoundException {
+		if (updated) { return true; }
+		
+		boolean downloaded = false;
+		
 		for (String urlentry : MIRRORS_URL) {
-			if (YmlUtils.downloadMirrorsYmlFile(urlentry)) { return; }
+			try {
+				YmlUtils.downloadMirrorsYmlFile(urlentry);
+				downloaded = true;
+				break;
+			} catch (DownloadsFailedException ignore) { 
+			} catch (NoMirrorsAvailableException ignore) {
+			}
 		}
+		
+		parseMirrorsFile();
+		
+		if(!downloaded) {
+			Util.log("Failed to download mirrors.yml, using current version.");
+			return false;
+		}
+		return true;
 	}
 }

@@ -1,9 +1,12 @@
 package org.spoutcraft.launcher;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Map;
 
 import org.bukkit.util.config.Configuration;
 import org.spoutcraft.launcher.async.DownloadListener;
+import org.spoutcraft.launcher.exception.NoMirrorsAvailableException;
 import org.spoutcraft.launcher.modpacks.ModPackYML;
 
 public class ModpackBuild {
@@ -43,18 +46,18 @@ public class ModpackBuild {
 		this.listener = listener;
 	}
 
-	public void install() {
+	public void install() throws FileNotFoundException {
 		Configuration config = ModPackYML.getModPackYML();
 		config.setProperty("current", getBuild());
 		config.save();
 	}
 
-	public String getInstalledBuild() {
+	public String getInstalledBuild() throws FileNotFoundException {
 		Configuration config = ModPackYML.getModPackYML();
 		return config.getString("current");
 	}
 
-	public String getPatchURL() {
+	public String getPatchURL() throws IOException {
 		// String mirrorURL = "Patches/Minecraft/minecraft_";
 		// mirrorURL += getLatestMinecraftVersion();
 		// mirrorURL += "-" + getMinecraftVersion() + ".patch";
@@ -66,7 +69,7 @@ public class ModpackBuild {
 		return getPatchURL(getLatestMinecraftVersion(), getMinecraftVersion());
 	}
 
-	public String getPatchURL(String oldVersion, String newVersion) {
+	public String getPatchURL(String oldVersion, String newVersion) throws NoMirrorsAvailableException {
 		String mirrorURL = "Patches/Minecraft/minecraft_";
 		mirrorURL += oldVersion;
 		mirrorURL += "-" + newVersion + ".patch";
@@ -85,7 +88,7 @@ public class ModpackBuild {
 	}
 
 	@SuppressWarnings("unchecked")
-	public static ModpackBuild getSpoutcraftBuild() {
+	public static ModpackBuild getSpoutcraftBuild() throws FileNotFoundException {
 		Configuration config = ModPackYML.getModPackYML();
 		Map<String, Object> builds = (Map<String, Object>) config.getProperty("builds");
 		String latest = config.getString("latest", null);

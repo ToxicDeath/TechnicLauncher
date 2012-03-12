@@ -1,83 +1,90 @@
 package org.spoutcraft.launcher;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 
 import org.bukkit.util.config.Configuration;
 
-public class MinecraftYML {
-	private static final String			MINECRAFT_YML	= "minecraft.yml";
-	private static volatile boolean	updated				= false;
-	private static String						latest				= null;
-	private static String						recommended		= null;
-	private static final Object			key						= new Object();
-	private static Configuration		config				= null;
-	private static File							configFile		= null;
+public class MinecraftYML{
+	private static final String					MINECRAFT_YML	= "minecraft.yml";
+	private static String								latest				= null;
+	private static String								recommended		= null;
+	private static final Object					key = new Object();
+	private static boolean 							updated = false;
 
-	public static Configuration getMinecraftYML() {
-		updateMinecraftYMLCache();
-		return getConfig();
+	private static final CachedYMLFile 	ymlFile;
+	
+	static {
+		ymlFile = new CachedYMLFile(MINECRAFT_YML, null, 
+				new File(GameUpdater.modpackDir, MINECRAFT_YML));
+	}
+	
+	public static Configuration getMinecraftYML() throws FileNotFoundException {
+		return ymlFile.getConfig();
 	}
 
-	public static File getConfigFile() {
-		return new File(GameUpdater.modpackDir, MINECRAFT_YML);
-	}
-
-	public static Configuration getConfig() {
-		File currentConfigFile = getConfigFile();
-		if (config == null || configFile.compareTo(currentConfigFile) != 0) {
-			configFile = currentConfigFile;
-			config = new Configuration(configFile);
-			config.load();
+	
+	/**
+	 * @return false if cache couldn't be updated(but an offline version exists)
+	 * @throws FileNotFoundException if minecraft.yml is not available
+	 */
+	public static boolean updateMinecraftYMLCache() throws FileNotFoundException {
+		if (!updated) {
+			return true;
 		}
-		return config;
+		updated = false;
+		
+		
+		boolean downloaded;
+		
+		synchronized (key) {
+
+			Configuration config;
+			String current;
+			
+			if (ymlFile.hasConfig()) {
+				config = ymlFile.getConfig();
+				current = config.getString("current");
+			} else {
+				current = null;
+			}
+			
+			downloaded = ymlFile.updateYMLCache(false);
+			
+			config = ymlFile.getConfig();
+			// GameUpdater.copy(getConfigFile(), output)
+			latest = config.getString("latest");
+			recommended = config.getString("recommended");
+			if (current != null) {
+				config.setProperty("current", current);
+				config.save();
+			}
+		}
+		
+		return downloaded;
 	}
 
-	public static String getLatestMinecraftVersion() {
+
+	
+	public static String getLatestMinecraftVersion() throws FileNotFoundException {
 		updateMinecraftYMLCache();
 		return latest;
 	}
 
-	public static String getRecommendedMinecraftVersion() {
+	public static String getRecommendedMinecraftVersion() throws FileNotFoundException {
 		updateMinecraftYMLCache();
 		return recommended;
 	}
 
-	public static void setInstalledVersion(String version) {
-		Configuration config = getMinecraftYML();
+	public static void setInstalledVersion(String version) throws FileNotFoundException  {
+		Configuration config = ymlFile.getConfig();
 		config.setProperty("current", version);
 		config.save();
 	}
 
-	public static String getInstalledVersion() {
-		Configuration config = getMinecraftYML();
+	public static String getInstalledVersion() throws FileNotFoundException {
+		Configuration config = ymlFile.getConfig();
 		return config.getString("current");
 	}
-
-	public static void updateMinecraftYMLCache() {
-		if (!updated || !getConfigFile().exists()) {
-			synchronized (key) {
-				String current = null;
-				if (getConfigFile().exists()) {
-					try {
-						current = getConfig().getString("current");
-					} catch (Exception ex) {
-						ex.printStackTrace();
-					}
-				}
-
-				if (YmlUtils.downloadYmlFile(MINECRAFT_YML, "http://technic.freeworldsgaming.com/minecraft.yml", getConfigFile())) {
-					// GameUpdater.copy(getConfigFile(), output)
-					config = null;
-					Configuration config = getConfig();
-					latest = config.getString("latest");
-					recommended = config.getString("recommended");
-					if (current != null) {
-						config.setProperty("current", current);
-						config.save();
-					}
-				}
-				updated = true;
-			}
-		}
-	}
 }
+

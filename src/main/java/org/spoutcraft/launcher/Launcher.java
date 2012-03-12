@@ -18,6 +18,7 @@ package org.spoutcraft.launcher;
 
 import java.applet.Applet;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Iterator;
@@ -31,7 +32,7 @@ import org.spoutcraft.launcher.exception.UnknownMinecraftException;
 public class Launcher {
 
 	@SuppressWarnings("rawtypes")
-	public static Applet getMinecraftApplet() throws CorruptedMinecraftJarException, MinecraftVerifyException {
+	public static Applet getMinecraftApplet() throws CorruptedMinecraftJarException, MinecraftVerifyException, FileNotFoundException {
 
 		File mcBinFolder = GameUpdater.binDir;
 

@@ -45,6 +45,7 @@ import java.util.zip.ZipOutputStream;
 
 import org.spoutcraft.launcher.async.Download;
 import org.spoutcraft.launcher.async.DownloadListener;
+import org.spoutcraft.launcher.exception.DownloadsFailedException;
 import org.spoutcraft.launcher.exception.UnsupportedOSException;
 
 import SevenZip.LzmaAlone;
@@ -187,7 +188,7 @@ public class GameUpdater implements DownloadListener {
 		return baseURL + fileName + ".jar.lzma";
 	}
 
-	public boolean checkMCUpdate() {
+	public boolean checkMCUpdate() throws FileNotFoundException {
 		if (!GameUpdater.binDir.exists()) return true;
 		if (!new File(binDir, "natives").exists()) return true;
 		File minecraft = new File(binDir, "minecraft.jar");
@@ -326,7 +327,7 @@ public class GameUpdater implements DownloadListener {
 		return new File(tempDir.getPath() + File.separator + "natives.jar.lzma");
 	}
 
-	public void updateSpoutcraft() throws Exception {
+	public void updateSpoutcraft() throws DownloadsFailedException, IOException {
 		performBackup();
 		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
 
@@ -371,7 +372,7 @@ public class GameUpdater implements DownloadListener {
 					String mirrorURL = "Libraries/" + lib.getKey() + "/" + name + ".jar";
 					String fallbackURL = "http://spouty.org/Libraries/" + lib.getKey() + "/" + name + ".jar";
 					String url = MirrorUtils.getMirrorUrl(mirrorURL, fallbackURL, this);
-					Download download = DownloadUtils.downloadFile(url, libraryFile.getPath(), lib.getKey() + ".jar", MD5, this);
+					DownloadUtils.downloadFile(url, libraryFile.getPath(), lib.getKey() + ".jar", MD5, this);
 				}
 			}
 		}
@@ -382,7 +383,7 @@ public class GameUpdater implements DownloadListener {
 		spoutcraftVersion.delete();
 	}
 
-	public boolean isSpoutcraftUpdateAvailable() {
+	public boolean isSpoutcraftUpdateAvailable() throws FileNotFoundException {
 		if (!WORKING_DIRECTORY.exists()) return true;
 		if (!GameUpdater.workDir.exists()) return true;
 
@@ -416,19 +417,14 @@ public class GameUpdater implements DownloadListener {
 		return count;
 	}
 
-	public static void copy(File input, File output) {
+	public static void copy(File input, File output) throws IOException {
 		FileInputStream inputStream = null;
 		FileOutputStream outputStream = null;
-		try {
-			inputStream = new FileInputStream(input);
-			outputStream = new FileOutputStream(output);
-			copy(inputStream, outputStream);
-			inputStream.close();
-			outputStream.close();
-		} catch (Exception e) {
-			Util.log("Error copying file %s to %s", input, output);
-			e.printStackTrace();
-		}
+		inputStream = new FileInputStream(input);
+		outputStream = new FileOutputStream(output);
+		copy(inputStream, outputStream);
+		inputStream.close();
+		outputStream.close();
 	}
 
 	public void performBackup() throws IOException {

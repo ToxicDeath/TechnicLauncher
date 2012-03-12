@@ -10,6 +10,8 @@ import java.util.Scanner;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.bukkit.util.config.Configuration;
+import org.spoutcraft.launcher.exception.DownloadsFailedException;
+import org.spoutcraft.launcher.exception.NoMirrorsAvailableException;
 
 public class MD5Utils {
 
@@ -18,17 +20,15 @@ public class MD5Utils {
 	private static boolean										updated;
 	private static final Map<String, String>	md5Map				= new HashMap<String, String>();
 
-	public static String getMD5(File file) {
+	public static String getMD5(File file) throws FileNotFoundException {
 		FileInputStream stream = null;
+		stream = new FileInputStream(file);
+		String md5Hex;
 		try {
-			stream = new FileInputStream(file);
-			String md5Hex = DigestUtils.md5Hex(stream);
-			stream.close();
-			return md5Hex;
-		} catch (FileNotFoundException e) {
+			 md5Hex = DigestUtils.md5Hex(stream);
+		} catch(IOException e) {
 			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
+			return null;
 		} finally {
 			try {
 				stream.close();
@@ -36,15 +36,16 @@ public class MD5Utils {
 				e.printStackTrace();
 			}
 		}
-		return null;
+		return md5Hex;
 	}
 
-	public static String getMD5(FileType type) {
+	public static String getMD5(FileType type) throws FileNotFoundException {
 		return getMD5(type, MinecraftYML.getLatestMinecraftVersion());
 	}
 
 	@SuppressWarnings("unchecked")
-	public static String getMD5(FileType type, String version) {
+	public static String getMD5(FileType type, String version) 
+			throws FileNotFoundException {
 		Configuration config = MinecraftYML.getMinecraftYML();
 		Map<String, Map<String, String>> builds = (Map<String, Map<String, String>>) config.getProperty("versions");
 		if (builds.containsKey(version)) {
@@ -54,7 +55,8 @@ public class MD5Utils {
 		return null;
 	}
 
-	public static String getMinecraftMD5(String md5Hash) {
+	@SuppressWarnings("unchecked")
+	public static String getMinecraftMD5(String md5Hash) throws FileNotFoundException {
 		Configuration config = MinecraftYML.getMinecraftYML();
 		Map<String, Map<String, String>> builds = (Map<String, Map<String, String>>) config.getProperty("versions");
 		for (String version : builds.keySet()) {
@@ -64,31 +66,28 @@ public class MD5Utils {
 		return null;
 	}
 
-	public static void updateMD5Cache() {
-		if (!updated && !Main.isOffline) {
-			updated = true;
-			try {
-				String url = MirrorUtils.getMirrorUrl(CHECKSUM_MD5, null);
-
-				if (url == null) {
-					if (GameUpdater.canPlayOffline()) {
-						Main.isOffline = true;
-						parseChecksumFile();
-					}
-					return;
-				}
-
-				if (DownloadUtils.downloadFile(url, CHECKSUM_FILE.getPath()).isSuccess()) {
-					parseChecksumFile();
-				}
-			} catch (FileNotFoundException e) {
-				Util.log("Checksum file '%s' not found.", CHECKSUM_FILE.getAbsoluteFile());
-				e.printStackTrace();
-			} catch (IOException e) {
-				Util.log("Checksum file '%s' threw error.", CHECKSUM_FILE.getAbsoluteFile());
-				e.printStackTrace();
-			}
+	/**
+	 * @return false if cache couldn't be downloaded(but an offline version exists)
+	 * @throws FileNotFoundException when md5 file doesn't exist locally
+	 */
+	public static boolean updateMD5Cache() throws FileNotFoundException {
+		if (updated) return true;
+		updated = true;
+		
+		boolean downloaded = false;
+		try {
+			String url = MirrorUtils.getMirrorUrl(CHECKSUM_MD5, null);
+			DownloadUtils.downloadFile(url, CHECKSUM_FILE.getPath());
+			downloaded = true;
+		} catch (NoMirrorsAvailableException e) {
+			Util.log("Warning: No mirrors available for 'checksum.md5'");
+		} catch (DownloadsFailedException e) {
+			Util.log("Warning: couldn't download 'checksum.md5'");
+			e.printStackTrace();
 		}
+
+		parseChecksumFile();
+		return downloaded;
 	}
 
 	private static void parseChecksumFile() throws FileNotFoundException {
@@ -110,13 +109,19 @@ public class MD5Utils {
 		return checksumPath(new File(GameUpdater.workDir, filePath), md5Path);
 	}
 
-	public static boolean checksumCachePath(String filePath, String md5Path) {
+	public static boolean checksumCachePath(String filePath, String md5Path) 
+			throws FileNotFoundException {
 		return checksumPath(new File(GameUpdater.cacheDir, filePath), md5Path);
 	}
 
 	public static boolean checksumPath(File file, String md5Path) {
 		if (!file.exists()) { return false; }
-		String fileMD5 = getMD5(file);
+		String fileMD5;
+		try {
+			fileMD5 = getMD5(file);
+		} catch (FileNotFoundException e) {
+			return false;
+		}
 		String storedMD5 = getMD5FromList(md5Path);
 		if (storedMD5 == null) {
 			Util.log("MD5 hash not found for '%s'", md5Path);

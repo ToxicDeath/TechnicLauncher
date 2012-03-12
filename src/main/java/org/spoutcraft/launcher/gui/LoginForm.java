@@ -17,6 +17,9 @@
  */
 package org.spoutcraft.launcher.gui;
 
+// TODO: create a retry/offline pane on login, and
+//       an error message saying it couldn't access mirrors with a retry button.
+
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
@@ -36,6 +39,7 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -170,7 +174,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		List<String> items = new ArrayList<String>();
 		int i = 0;
 		for (String item : ModPackListYML.modpackMap.keySet()) {
-			if (!Main.isOffline || GameUpdater.canPlayOffline(item)) {
+			if (!Main.showOffline || GameUpdater.canPlayOffline(item)) {
 				items.add(item);
 				i += 1;
 			}
@@ -314,7 +318,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		offlineMode.setBounds(257, 52, 100, 25);
 
 		offlinePane.setBounds(473, 362, 372, 99);
-		// offlinePane.add(tryAgain);
+		offlinePane.add(tryAgain);
 		offlinePane.add(offlineMode);
 		offlinePane.add(offlineMessage);
 		offlinePane.setVisible(false);
@@ -348,14 +352,17 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		modsButton.setEnabled(false);
 		setResizable(false);
 
-		if (Main.isOffline) {
+		if (Main.showOffline) {
 			offlinePane.setVisible(true);
 			loginPane.setVisible(false);
 		}
 	}
 
 	public void loadLauncherData() {
-		MirrorUtils.updateMirrorsYMLCache();
+		if (!MirrorUtils.updateMirrorsYMLCache()) {
+			this.isMirrorsOffline = true;
+		}
+			
 		MD5Utils.updateMD5Cache();
 		ModPackListYML.updateModPacksYMLCache();
 
@@ -507,13 +514,13 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 								// if (tumblerFeed != null) {
 								TumblerFeedParsingWorker.setUser(user);
 								// }
-								if (!Main.isOffline) {
+								if (!Main.showOffline) {
 									loginSkin1.setText(user);
 									loginSkin1.setVisible(true);
 									ImageUtils.drawCharacter(contentPane, this, "http://s3.amazonaws.com/MinecraftSkins/" + user + ".png", 103, 170, loginSkin1Image);
 								}
 							} else if (i == 2) {
-								if (!Main.isOffline) {
+								if (!Main.showOffline) {
 									loginSkin2.setText(user);
 									loginSkin2.setVisible(true);
 									ImageUtils.drawCharacter(contentPane, this, "http://s3.amazonaws.com/MinecraftSkins/" + user + ".png", 293, 170, loginSkin2Image);
@@ -649,6 +656,8 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		this.modsButton.setEnabled(false);
 		this.loginSkin1.setEnabled(false);
 		this.loginSkin2.setEnabled(false);
+		this.offlineMode.setEnabled(false);
+
 		options.setVisible(false);
 		SwingWorker<Boolean, Boolean> loginThread = new SwingWorker<Boolean, Boolean>() {
 
@@ -702,11 +711,9 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 					if (authFailed) {
 						JOptionPane.showMessageDialog(getParent(), "Unable to authenticate account with minecraft.net");
 					} else {
-						int result = JOptionPane.showConfirmDialog(getParent(), "Would you like to run in offline mode?", "Unable to Connect to Minecraft.net", JOptionPane.YES_NO_OPTION);
-						if (result == JOptionPane.YES_OPTION) {
-							values = new String[] { "0", "0", user, "0" };
-							return true;
-						}
+						JOptionPane.showMessageDialog(getParent(), "Unable to Connect to Minecraft.net, play offline?");
+						Main.showOffline = true;
+						offlinePane.setVisible(true);
 					}
 					this.cancel(true);
 					progressBar.setVisible(false);
@@ -756,7 +763,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 				SwingWorker<Boolean, String> updateThread = new SwingWorker<Boolean, String>() {
 
 					@Override
-					protected Boolean doInBackground() throws Exception {
+					protected Boolean doInBackground() {
 						publish("Checking for Minecraft Update...\n");
 						try {
 							mcUpdate = gameUpdater.checkMCUpdate();
@@ -773,8 +780,9 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 
 						publish(String.format("Checking for %s update...\n", ModPackListYML.currentModPackLabel));
 						try {
+							// FIXME: handle exception so user can check again for availability
 							modpackUpdate = gameUpdater.isModpackUpdateAvailable();
-						} catch (Exception e) {
+						} catch (IOException e) {
 							e.printStackTrace();
 						}
 						return true;
@@ -867,6 +875,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		modsButton.setEnabled(true);
 		loginSkin1.setEnabled(true);
 		loginSkin2.setEnabled(true);
+		offlineMode.setEnabled(true);
 	}
 
 	private Cipher getCipher(int mode, String password) throws Exception {
@@ -889,7 +898,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 
 		LauncherFrame launcher = new LauncherFrame();
 		launcher.setLoginForm(this);
-		int result = (Main.isOffline) ? launcher.runGame(null, null, null, null) : launcher.runGame(values[2].trim(), values[3].trim(), values[1].trim(), pass);
+		int result = (Main.showOffline) ? launcher.runGame(null, null, null, null) : launcher.runGame(values[2].trim(), values[3].trim(), values[1].trim(), pass);
 		if (result == LauncherFrame.SUCCESSFUL_LAUNCH) {
 			LoginForm.updateDialog.dispose();
 			LoginForm.updateDialog = null;
@@ -903,7 +912,9 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 			modsButton.setEnabled(true);
 			loginSkin1.setEnabled(true);
 			loginSkin2.setEnabled(true);
+			offlineMode.setEnabled(true);
 			progressBar.setVisible(false);
+			
 		}
 
 		this.success = result;

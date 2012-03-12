@@ -1,10 +1,13 @@
 package org.spoutcraft.launcher.modpacks;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 import org.bukkit.util.config.Configuration;
+import org.spoutcraft.launcher.CachedYMLFile;
 import org.spoutcraft.launcher.Main;
 import org.spoutcraft.launcher.YmlUtils;
 
@@ -16,52 +19,62 @@ public class ModPackYML {
 	private static volatile boolean	updated				= false;
 	private static final Object			key						= new Object();
 
+	private static final CachedYMLFile 	ymlFile;
+	
+	static {
+		ymlFile = new CachedYMLFile(MODPACK_YML, 
+				FALLBACK_URL, 
+				getModPackYMLFile());
+	}
+
+	
 	private static File getModPackYMLFile() {
 		return new File(ModPackListYML.currentModPackDirectory, MODPACK_YML);
 	}
 
-	public static Configuration getModPackYML() {
-		updateModPackYML();
-		Configuration config = new Configuration(getModPackYMLFile());
-		config.load();
-		return config;
+	
+	public static Configuration getModPackYML() throws FileNotFoundException {
+		return ymlFile.getConfig();
 	}
 
-	public static void updateModPackYML() {
+	public static void updateModPackYML() throws FileNotFoundException {
 		updateModPackYML(false);
 	}
 
-	public static void updateModPackYML(boolean doUpdate) {
-		if (doUpdate || !updated) {
-			synchronized (key) {
-				String selected = getSelectedBuild();
-
-				YmlUtils.downloadYmlFile(ModPackListYML.currentModPack + "/" + MODPACK_YML, FALLBACK_URL, getModPackYMLFile());
-
-				Configuration config = new Configuration(getModPackYMLFile());
-				config.load();
-				config.setProperty("current", selected);
-				config.setProperty("launcher", Main.build);
-				config.save();
-
-				updated = true;
+	public static boolean updateModPackYML(boolean doUpdate) throws FileNotFoundException {
+		
+		if (updated && !doUpdate) {return true; }
+		updated = true;
+		
+		boolean downloaded;
+		
+		synchronized (key) {
+			String current;
+			
+			// the file won't be there for the first run
+			if (ymlFile.hasConfig()) {
+				current = getSelectedBuild();  
+			} else {
+				current = null;
 			}
+
+			downloaded = ymlFile.updateYMLCache();
+			
+			Configuration config = getModPackYML();
+			
+			config.setProperty("current", current);
+			config.setProperty("launcher", Main.build);
+			config.save();
 		}
+		
+		return downloaded;
 	}
 
-	private static String getSelectedBuild() {
-		String selected = null;
-		if (getModPackYMLFile().exists()) {
-			try {
-				Configuration config = new Configuration(getModPackYMLFile());
-				config.load();
-				selected = config.getString("current");
-				if (selected == null || !isValidBuild(selected)) {
-					selected = config.getString("recommended");
-				}
-			} catch (Exception ex) {
-				ex.printStackTrace();
-			}
+	private static String getSelectedBuild() throws FileNotFoundException {
+		Configuration config = getModPackYML();
+		String selected = config.getString("current");
+		if (selected == null || !isValidBuild(selected)) {
+			selected = config.getString("recommended");
 		}
 		return selected;
 	}
@@ -87,7 +100,8 @@ public class ModPackYML {
 		return new File(ModPackListYML.currentModPackDirectory, "resources" + File.separator + "favicon.png").getAbsolutePath();
 	}
 
-	public static String[] getModpackBuilds() {
+	@SuppressWarnings("unchecked")
+	public static String[] getModpackBuilds() throws FileNotFoundException {
 		Configuration config = getModPackYML();
 		Map<String, Object> builds = (Map<String, Object>) config.getProperty("builds");
 		String latest = config.getString("latest", null);

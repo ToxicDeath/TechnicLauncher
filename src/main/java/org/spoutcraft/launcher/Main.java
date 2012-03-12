@@ -42,7 +42,6 @@ public class Main {
 	public static String		currentPack;
 	static File							recursion;
 	public static LoginForm	loginForm;
-	public static boolean		isOffline	= false;
 
 	public Main() throws Exception {
 		main(new String[0]);
