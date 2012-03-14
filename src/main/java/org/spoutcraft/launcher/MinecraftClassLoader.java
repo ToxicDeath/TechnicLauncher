@@ -18,6 +18,7 @@ package org.spoutcraft.launcher;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -66,23 +67,27 @@ public class MinecraftClassLoader extends URLClassLoader {
 
 	private Class<?> findClassInjar(String name, File file) throws ClassNotFoundException {
 		try {
+			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 			JarFile jar = new JarFile(file);
-			JarEntry entry = jar.getJarEntry(name.replace(".", "/") + ".class");
-			if (entry != null) {
-				InputStream is = jar.getInputStream(entry);
-				ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-				int next = is.read();
-				while (-1 != next) {
-					byteStream.write(next);
-					next = is.read();
-				}
-
-				byte classByte[] = byteStream.toByteArray();
-				Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
-				loadedClasses.put(name, result);
-				return result;
+			try {
+				JarEntry entry = jar.getJarEntry(name.replace(".", "/") + ".class");
+				if (entry != null) {
+					InputStream is = jar.getInputStream(entry);
+					int next = is.read();
+					while (-1 != next) {
+						byteStream.write(next);
+						next = is.read();
+					}
+				} 
+			}finally {
+				jar.close();
 			}
-		} catch (Exception e) {
+
+			byte classByte[] = byteStream.toByteArray();
+			Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
+			loadedClasses.put(name, result);
+			return result;
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		return null;
