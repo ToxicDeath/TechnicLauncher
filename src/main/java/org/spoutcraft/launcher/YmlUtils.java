@@ -62,18 +62,25 @@ public class YmlUtils {
 			// Download to temporary file
 			File tempFile = new File(GameUpdater.tempDir, ymlFile.getName());
 			out = new BufferedOutputStream(new FileOutputStream(tempFile));
-
-			if (GameUpdater.copy(con.getInputStream(), out) <= 0) {
-				Util.log("Download URL was empty: '%s'/n", url);
-				return false;
+			try {
+				if (GameUpdater.copy(con.getInputStream(), out) <= 0) {
+					Util.log("Download URL was empty: '%s'/n", url);
+					return false;
+				}
+			} finally {
+				out.flush();
+				out.close();
 			}
 
-			out.flush();
 
 			// Test yml loading
 			Yaml yamlFile = new Yaml();
 			io = new BufferedInputStream(new FileInputStream(tempFile));
-			yamlFile.load(io);
+			try {
+				yamlFile.load(io);
+			} finally {
+				io.close();
+			}
 
 			// If no Exception then file loaded fine, copy to output file
 			GameUpdater.copy(tempFile, ymlFile);
@@ -85,17 +92,7 @@ public class YmlUtils {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
-		} catch (Exception e) {
-			Util.log("Yaml File has error's badly formed: '%s'/n", url);
-			e.printStackTrace();
-		} finally {
-			try {
-				if (io != null) io.close();
-				if (out != null) out.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
+		} 
 		return false;
 	}
 }

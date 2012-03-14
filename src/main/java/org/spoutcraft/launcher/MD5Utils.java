@@ -10,42 +10,43 @@ import java.util.Scanner;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.bukkit.util.config.Configuration;
+import org.spoutcraft.launcher.exception.DownloadFailedException;
 
 public class MD5Utils {
 
 	private static final String								CHECKSUM_MD5	= "CHECKSUM.md5";
 	private static final File									CHECKSUM_FILE	= new File(GameUpdater.workDir, CHECKSUM_MD5);
-	private static boolean										updated;
-	private static final Map<String, String>	md5Map				= new HashMap<String, String>();
 
-	public static String getMD5(File file) {
-		FileInputStream stream = null;
+	private MirrorDownloader 												downloader;
+	private MinecraftYML											mineYML;
+	private Map<String, String>								md5Map				= new HashMap<String, String>();
+
+	
+	public MD5Utils(MirrorDownloader downloader, MinecraftYML mineYML) throws FileNotFoundException {
+		this.downloader = downloader;
+		this.mineYML = mineYML;
+		
+		updateMD5Cache();
+	}
+	
+	public static String getMD5(File file) throws IOException {
+		FileInputStream stream;
+		stream = new FileInputStream(file);
 		try {
-			stream = new FileInputStream(file);
 			String md5Hex = DigestUtils.md5Hex(stream);
-			stream.close();
 			return md5Hex;
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
 		} finally {
-			try {
-				stream.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			stream.close();
 		}
-		return null;
 	}
 
-	public static String getMD5(FileType type) {
-		return getMD5(type, MinecraftYML.getLatestMinecraftVersion());
+	public String getMD5(FileType type) throws FileNotFoundException {
+		return getMD5(type, mineYML.getLatestMinecraftVersion());
 	}
 
 	@SuppressWarnings("unchecked")
-	public static String getMD5(FileType type, String version) {
-		Configuration config = MinecraftYML.getMinecraftYML();
+	public String getMD5(FileType type, String version) throws FileNotFoundException {
+		Configuration config = mineYML.getConfig();
 		Map<String, Map<String, String>> builds = (Map<String, Map<String, String>>) config.getProperty("versions");
 		if (builds.containsKey(version)) {
 			Map<String, String> files = builds.get(version);
@@ -54,8 +55,9 @@ public class MD5Utils {
 		return null;
 	}
 
-	public static String getMinecraftMD5(String md5Hash) {
-		Configuration config = MinecraftYML.getMinecraftYML();
+	@SuppressWarnings("unchecked")
+	public String getMinecraftMD5(String md5Hash) throws FileNotFoundException {
+		Configuration config = mineYML.getConfig();
 		Map<String, Map<String, String>> builds = (Map<String, Map<String, String>>) config.getProperty("versions");
 		for (String version : builds.keySet()) {
 			String minecraftMD5 = builds.get(version).get("minecraft");
@@ -64,34 +66,18 @@ public class MD5Utils {
 		return null;
 	}
 
-	public static void updateMD5Cache() {
-		if (!updated && !Main.isOffline) {
-			updated = true;
-			try {
-				String url = MirrorUtils.getMirrorUrl(CHECKSUM_MD5, null);
-
-				if (url == null) {
-					if (GameUpdater.canPlayOffline()) {
-						Main.isOffline = true;
-						parseChecksumFile();
-					}
-					return;
-				}
-
-				if (DownloadUtils.downloadFile(url, CHECKSUM_FILE.getPath()).isSuccess()) {
-					parseChecksumFile();
-				}
-			} catch (FileNotFoundException e) {
-				Util.log("Checksum file '%s' not found.", CHECKSUM_FILE.getAbsoluteFile());
-				e.printStackTrace();
-			} catch (IOException e) {
-				Util.log("Checksum file '%s' threw error.", CHECKSUM_FILE.getAbsoluteFile());
-				e.printStackTrace();
-			}
+	public void updateMD5Cache() throws FileNotFoundException {
+		try {
+			// FIXME: set fallback url
+			downloader.downloadFile(CHECKSUM_MD5, null, CHECKSUM_FILE);
+		} catch (DownloadFailedException e) {
+			Util.log("Download failed fot '%s', trying offline version.", CHECKSUM_MD5);
 		}
+
+		parseChecksumFile();
 	}
 
-	private static void parseChecksumFile() throws FileNotFoundException {
+	private void parseChecksumFile() throws FileNotFoundException {
 		md5Map.clear();
 		Scanner scanner = new Scanner(CHECKSUM_FILE).useDelimiter("\\||\n");
 		while (scanner.hasNext()) {
@@ -102,33 +88,37 @@ public class MD5Utils {
 		}
 	}
 
-	public static boolean checksumPath(String relativePath) {
+	public boolean checksumPath(String relativePath) {
 		return checksumPath(relativePath, relativePath);
 	}
 
-	public static boolean checksumPath(String filePath, String md5Path) {
+	public boolean checksumPath(String filePath, String md5Path) {
 		return checksumPath(new File(GameUpdater.workDir, filePath), md5Path);
 	}
 
-	public static boolean checksumCachePath(String filePath, String md5Path) {
+	public boolean checksumCachePath(String filePath, String md5Path) {
 		return checksumPath(new File(GameUpdater.cacheDir, filePath), md5Path);
 	}
 
-	public static boolean checksumPath(File file, String md5Path) {
+	public boolean checksumPath(File file, String md5Path) {
 		if (!file.exists()) { return false; }
-		String fileMD5 = getMD5(file);
-		String storedMD5 = getMD5FromList(md5Path);
-		if (storedMD5 == null) {
-			Util.log("MD5 hash not found for '%s'", md5Path);
+		try {
+			String fileMD5 = getMD5(file);
+			String storedMD5 = getMD5FromList(md5Path);
+			if (storedMD5 == null) {
+				Util.log("MD5 hash not found for '%s'", md5Path);
+			}
+			boolean doesMD5Match = (storedMD5 == null) ? false : storedMD5.equalsIgnoreCase(fileMD5);
+			if (!doesMD5Match) {
+				Util.log("[MD5 Mismatch] File '%s' has md5 of '%s' instead of '%s'", file, fileMD5, storedMD5);
+			}
+			return doesMD5Match;
+		} catch (IOException e) {
+			return false;
 		}
-		boolean doesMD5Match = (storedMD5 == null) ? false : storedMD5.equalsIgnoreCase(fileMD5);
-		if (!doesMD5Match) {
-			Util.log("[MD5 Mismatch] File '%s' has md5 of '%s' instead of '%s'", file, fileMD5, storedMD5);
-		}
-		return doesMD5Match;
 	}
 
-	public static String getMD5FromList(String md5Path) {
+	public String getMD5FromList(String md5Path) {
 		md5Path = md5Path.replace('/', '\\');
 		return (!md5Map.containsKey(md5Path)) ? null : md5Map.get(md5Path);
 	}

@@ -75,8 +75,10 @@ public class GameUpdater implements DownloadListener {
 	public final String					spoutcraftMirrors		= "http://cdn.getspout.org/mirrors.html";
 
 	private DownloadListener		listener;
+	private MD5Utils						md5;
 
-	public GameUpdater() {
+	public GameUpdater(MD5Utils md5) {
+eja		this.md5 = md5;
 	}
 
 	public static void setModpackDirectory(String currentModPack) {
@@ -108,10 +110,10 @@ public class GameUpdater implements DownloadListener {
 		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
 		String minecraftVersion = build.getMinecraftVersion();
 
-		String minecraftMD5 = MD5Utils.getMD5(FileType.minecraft, minecraftVersion);
-		String jinputMD5 = MD5Utils.getMD5(FileType.jinput);
-		String lwjglMD5 = MD5Utils.getMD5(FileType.lwjgl);
-		String lwjgl_utilMD5 = MD5Utils.getMD5(FileType.lwjgl_util);
+		String minecraftMD5 = md5.getMD5(FileType.minecraft, minecraftVersion);
+		String jinputMD5 = md5.getMD5(FileType.jinput);
+		String lwjglMD5 = md5.getMD5(FileType.lwjgl);
+		String lwjgl_utilMD5 = md5.getMD5(FileType.lwjgl_util);
 
 		// Processs minecraft.jar \\
 		File mcCache = new File(cacheDir, "minecraft_" + minecraftVersion + ".jar");
@@ -129,9 +131,9 @@ public class GameUpdater implements DownloadListener {
 
 		// Process other Downloads
 		mcCache = new File(cacheDir, "jinput.jar");
-		String md5 = (SettingsUtil.isLatestLWJGL()) ? MD5Utils.getMD5FromList("Libraries\\lwjgl\\jinput.jar") : jinputMD5;
+		String md5 = (SettingsUtil.isLatestLWJGL()) ? md5.getMD5FromList("Libraries\\lwjgl\\jinput.jar") : jinputMD5;
 		if (!mcCache.exists() || !jinputMD5.equals(MD5Utils.getMD5(mcCache))) {
-			DownloadUtils.downloadFile(getNativesUrl() + "jinput.jar", binDir.getPath() + File.separator + "jinput.jar", "jinput.jar", md5, listener);
+			downloader.downloadFile(getNativesUrl() + "jinput.jar", binDir.getPath() + File.separator + "jinput.jar", "jinput.jar", md5, listener);
 		} else {
 			stateChanged("Copying jinput.jar from cache", 0);
 			copy(mcCache, new File(binDir, "jinput.jar"));
@@ -416,7 +418,7 @@ public class GameUpdater implements DownloadListener {
 		return count;
 	}
 
-	public static void copy(File input, File output) {
+	public static void copy(File input, File output) throws IOException {
 		FileInputStream inputStream = null;
 		FileOutputStream outputStream = null;
 		try {
@@ -425,9 +427,8 @@ public class GameUpdater implements DownloadListener {
 			copy(inputStream, outputStream);
 			inputStream.close();
 			outputStream.close();
-		} catch (Exception e) {
-			Util.log("Error copying file %s to %s", input, output);
-			e.printStackTrace();
+		} catch (IOException e) {
+			throw new IOException(String.format("Error copying '%s' to '%s'", input, output));
 		}
 	}
 

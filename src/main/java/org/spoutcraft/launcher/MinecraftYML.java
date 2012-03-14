@@ -1,83 +1,68 @@
 package org.spoutcraft.launcher;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 
 import org.bukkit.util.config.Configuration;
 
-public class MinecraftYML {
+public class MinecraftYML extends CachedYmlFile {
 	private static final String			MINECRAFT_YML	= "minecraft.yml";
-	private static volatile boolean	updated				= false;
-	private static String						latest				= null;
-	private static String						recommended		= null;
-	private static final Object			key						= new Object();
-	private static Configuration		config				= null;
-	private static File							configFile		= null;
+	private static final File			  CONFIG_FILE		= new File(GameUpdater.modpackDir, MINECRAFT_YML);
+	
+	private volatile boolean	updated				= false;
+	private String						latest				= null;
+	private String						recommended		= null;
+	private final Object			key						= new Object();
 
-	public static Configuration getMinecraftYML() {
-		updateMinecraftYMLCache();
-		return getConfig();
+	public MinecraftYML(MirrorDownloader downloader) throws FileNotFoundException {
+		super(downloader, MINECRAFT_YML, null, CONFIG_FILE);
 	}
-
-	public static File getConfigFile() {
-		return new File(GameUpdater.modpackDir, MINECRAFT_YML);
-	}
-
-	public static Configuration getConfig() {
-		File currentConfigFile = getConfigFile();
-		if (config == null || configFile.compareTo(currentConfigFile) != 0) {
-			configFile = currentConfigFile;
-			config = new Configuration(configFile);
-			config.load();
-		}
-		return config;
-	}
-
-	public static String getLatestMinecraftVersion() {
-		updateMinecraftYMLCache();
+	
+	public String getLatestMinecraftVersion() throws FileNotFoundException {
+		updateYMLCache();
 		return latest;
 	}
 
-	public static String getRecommendedMinecraftVersion() {
-		updateMinecraftYMLCache();
+	public String getRecommendedMinecraftVersion() throws FileNotFoundException {
+		updateYMLCache();
 		return recommended;
 	}
 
-	public static void setInstalledVersion(String version) {
-		Configuration config = getMinecraftYML();
+	public void setInstalledVersion(String version) throws FileNotFoundException {
+		Configuration config = getConfig();
 		config.setProperty("current", version);
 		config.save();
 	}
 
-	public static String getInstalledVersion() {
-		Configuration config = getMinecraftYML();
+	public String getInstalledVersion() throws FileNotFoundException {
+		Configuration config = getConfig();
 		return config.getString("current");
 	}
 
-	public static void updateMinecraftYMLCache() {
-		if (!updated || !getConfigFile().exists()) {
-			synchronized (key) {
-				String current = null;
-				if (getConfigFile().exists()) {
-					try {
-						current = getConfig().getString("current");
-					} catch (Exception ex) {
-						ex.printStackTrace();
-					}
-				}
+	public boolean updateYMLCache() throws FileNotFoundException {
+		if (updated) { return true; }
+		updated = true;
+		
+		boolean downloaded;
+		synchronized (key) {
+			String current;
+			
+			if (hasConfig()) {
+				current = getConfig().getString("current");
+			} else {
+				current = null;
+			}
 
-				if (YmlUtils.downloadYmlFile(MINECRAFT_YML, "http://technic.freeworldsgaming.com/minecraft.yml", getConfigFile())) {
-					// GameUpdater.copy(getConfigFile(), output)
-					config = null;
-					Configuration config = getConfig();
-					latest = config.getString("latest");
-					recommended = config.getString("recommended");
-					if (current != null) {
-						config.setProperty("current", current);
-						config.save();
-					}
-				}
-				updated = true;
+			downloaded = super.updateYMLCache();
+			
+			Configuration config = getConfig();
+			latest = config.getString("latest");
+			recommended = config.getString("recommended");
+			if (current != null) {
+				config.setProperty("current", current);
+				config.save();
 			}
 		}
+		return downloaded;
 	}
 }
