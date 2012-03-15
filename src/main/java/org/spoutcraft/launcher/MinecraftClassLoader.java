@@ -31,12 +31,12 @@ import java.util.jar.JarFile;
 
 public class MinecraftClassLoader extends URLClassLoader {
 	private final HashMap<String, Class<?>>	loadedClasses	= new HashMap<String, Class<?>>(1000);
-	private File														spoutcraft		= null;
+	private final File[]										jarMods;
 	private final File[]										libraries;
 
-	public MinecraftClassLoader(URL[] urls, ClassLoader parent, File spoutcraft, File[] libraries) {
+	public MinecraftClassLoader(URL[] urls, ClassLoader parent, File[] jarMods, File[] libraries) {
 		super(urls, parent);
-		this.spoutcraft = spoutcraft;
+		this.jarMods = jarMods; 
 		this.libraries = libraries;
 		for (File f : libraries) {
 			try {
@@ -55,8 +55,10 @@ public class MinecraftClassLoader extends URLClassLoader {
 		Class<?> result = loadedClasses.get(name); // checks in cached classes
 		if (result != null) { return result; }
 
-		result = findClassInjar(name, spoutcraft);
-		if (result != null) { return result; }
+		for (File file : jarMods) {
+			result = findClassInjar(name, file);
+			if (result != null) { return result; }
+		}
 
 		for (File file : libraries) {
 			result = findClassInjar(name, file);
@@ -78,15 +80,15 @@ public class MinecraftClassLoader extends URLClassLoader {
 						byteStream.write(next);
 						next = is.read();
 					}
+
+					byte classByte[] = byteStream.toByteArray();
+					Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
+					loadedClasses.put(name, result);
+					return result;
 				} 
 			}finally {
 				jar.close();
 			}
-
-			byte classByte[] = byteStream.toByteArray();
-			Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
-			loadedClasses.put(name, result);
-			return result;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
