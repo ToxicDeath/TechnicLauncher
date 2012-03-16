@@ -22,6 +22,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.PublicKey;
 import java.security.cert.Certificate;
@@ -41,9 +42,25 @@ public class PlatformUtils {
 		return workDir;
 	}
 
-	public static File getWorkingDirectory(String applicationName) {
-		boolean isPortable = MinecraftUtils.getOptions().isPortable();
-		if (isPortable) { return new File("." + LAUNCHER_DIR); }
+	public static File getWorkingDirectory(String applicationName) {		boolean isPortable = MinecraftUtils.getOptions().isPortable();
+		if (isPortable) {
+			File location;
+			try {
+				location = new File(
+						Main.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+
+				// relative to the executed jar, or current directory
+				if (location.isFile()) {
+					location = location.getParentFile();
+				} else {
+					location = new File(System.getProperty("user.dir"));
+				}
+			} catch (URISyntaxException e) {
+				location = new File(System.getProperty("user.dir"));
+			}
+
+			return new File(location, "." + applicationName).getAbsoluteFile(); 
+		}
 		String userHome = System.getProperty("user.home", ".");
 		File workingDirectory;
 		switch (getPlatform()) {
