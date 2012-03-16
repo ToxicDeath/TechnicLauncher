@@ -54,7 +54,7 @@ public class Launcher {
 		File[] foundJars = mcBinFolder.listFiles(new FilenameFilter() {
 			@Override
 			public boolean accept(File dir, String name) {
-				return name.toLowerCase().endsWith(".mod.jar");
+				return name.toLowerCase().endsWith(".jmod");
 			}
 		});
 		
