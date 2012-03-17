@@ -20,54 +20,92 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.security.CodeSigner;
 import java.security.CodeSource;
-import java.util.HashMap;
+import java.security.Policy;
+import java.security.ProtectionDomain;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-public class MinecraftClassLoader extends URLClassLoader {
-	private final HashMap<String, Class<?>>	loadedClasses	= new HashMap<String, Class<?>>(1000);
-	private final File[]										jarMods;
-	private final File[]										libraries;
+/**
+ * Loads classes in a jar and searches a given list of jars for overidden 
+ * 	versions.
+ * 
+ *
+ */
+public class MinecraftClassLoader extends ClassLoader {
+	private final File 											jarToOverride;
+	private final File[]										overrideJars;
 
-	public MinecraftClassLoader(URL[] urls, ClassLoader parent, File[] jarMods, File[] libraries) {
-		super(urls, parent);
-		this.jarMods = jarMods; 
-		this.libraries = libraries;
-		for (File f : libraries) {
-			try {
-				this.addURL(f.toURI().toURL());
-			} catch (MalformedURLException e) {
-				e.printStackTrace();
+	private ProtectionDomain								jarProtectionDomain;
+	private Set<String>											overrideClasses = new HashSet<String>();
+
+	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, File[] overrideJars) throws IOException {
+		super(parent);
+		this.jarToOverride = jarToOverride;
+		this.overrideJars = overrideJars;
+		
+		CodeSource source = new CodeSource(jarToOverride.toURI().toURL(), (CodeSigner[])null);
+		jarProtectionDomain = new ProtectionDomain(
+				source, 
+				Policy.getPolicy().getPermissions(source),
+				this,
+				null);
+		
+		JarFile jar = new JarFile(jarToOverride);
+		try {
+			String name;
+			for(Enumeration<JarEntry> entries = jar.entries(); entries.hasMoreElements();) {
+				name = entries.nextElement().getName();
+				if (name.endsWith(".class")) {
+					overrideClasses.add(name.substring(0, name.length()-6).replace('/', '.'));
+				}
 			}
+		} finally {
+			jar.close();
 		}
+	}
+	
+	private Class <?> resolveOnExit(Class<?> clazz, boolean resolve) {
+		if (resolve) {
+			this.resolveClass(clazz);
+		}
+		return clazz;
 	}
 
 	// NOTE: VerifyException is due to multiple classes of the same type in
 	// jars, need to override all classloader methods to fix...
 
 	@Override
-	protected Class<?> findClass(String name) throws ClassNotFoundException {
-		Class<?> result = loadedClasses.get(name); // checks in cached classes
-		if (result != null) { return result; }
+	public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+		Class<?> clazz = null;
 
-		for (File file : jarMods) {
-			result = findClassInjar(name, file);
-			if (result != null) { return result; }
+		clazz = findLoadedClass(name);
+		if(clazz != null) { return clazz; }
+
+		if (overrideClasses.contains(name)) {
+			for (File file : overrideJars) {
+				clazz = findClassInjar(name, file);
+				if (clazz != null) { return resolveOnExit(clazz, resolve); }
+			}
+			clazz = findClassInjar(name, jarToOverride);
+			assert clazz != null;
+			return resolveOnExit(clazz, resolve);
 		}
 
-		for (File file : libraries) {
-			result = findClassInjar(name, file);
-			if (result != null) { return result; }
+		try {
+			return getParent().loadClass(name);
+		} catch (ClassNotFoundException e) {
+			return resolveOnExit(findClass(name), resolve);
 		}
-		return super.findClass(name);
 	}
 
-	private Class<?> findClassInjar(String name, File file) throws ClassNotFoundException {
+
+
+	private Class<?> findClassInjar(String name, File file) {
 		try {
 			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 			JarFile jar = new JarFile(file);
@@ -75,16 +113,23 @@ public class MinecraftClassLoader extends URLClassLoader {
 				JarEntry entry = jar.getJarEntry(name.replace(".", "/") + ".class");
 				if (entry != null) {
 					InputStream is = jar.getInputStream(entry);
-					int next = is.read();
-					while (-1 != next) {
-						byteStream.write(next);
-						next = is.read();
+					try {
+						byte[] buf = new byte[256];
+						
+						int count = is.read(buf);
+						while (-1 != count) {
+							byteStream.write(buf, 0, count);
+							count = is.read(buf);
+						}
+		
+						// using jarToOverride's ProtectionDomain
+						byte classByte[] = byteStream.toByteArray();
+						Class<?> result = defineClass(name, classByte, 0, classByte.length, 
+								jarProtectionDomain);
+						return result;
+					} finally {
+						is.close();
 					}
-
-					byte classByte[] = byteStream.toByteArray();
-					Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
-					loadedClasses.put(name, result);
-					return result;
 				} 
 			}finally {
 				jar.close();
