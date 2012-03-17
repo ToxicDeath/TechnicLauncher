@@ -20,13 +20,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.security.CodeSigner;
 import java.security.CodeSource;
 import java.security.Policy;
 import java.security.ProtectionDomain;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -34,17 +35,21 @@ import java.util.jar.JarFile;
  * Loads classes in a jar and searches a given list of jars for overidden 
  * 	versions.
  * 
+ * Extends URLClassLoader only for the sake of ModLoader, searching for resources
+ *   and classes is done here to enforce JAR search order.
  *
  */
-public class MinecraftClassLoader extends ClassLoader {
+public class MinecraftClassLoader extends URLClassLoader {
 	private final File 											jarToOverride;
 	private final File[]										overrideJars;
 
+	//private URLClassLoader									urlLoader;
 	private ProtectionDomain								jarProtectionDomain;
-	private Set<String>											overrideClasses = new HashSet<String>();
+	private List<File>											modLoaderJars = new ArrayList<File>();
+//	private Set<String>											overrideClasses = new HashSet<String>();
 
 	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, File[] overrideJars) throws IOException {
-		super(parent);
+		super(new URL[0], parent);
 		this.jarToOverride = jarToOverride;
 		this.overrideJars = overrideJars;
 		
@@ -55,56 +60,50 @@ public class MinecraftClassLoader extends ClassLoader {
 				this,
 				null);
 		
-		JarFile jar = new JarFile(jarToOverride);
-		try {
-			String name;
-			for(Enumeration<JarEntry> entries = jar.entries(); entries.hasMoreElements();) {
-				name = entries.nextElement().getName();
-				if (name.endsWith(".class")) {
-					overrideClasses.add(name.substring(0, name.length()-6).replace('/', '.'));
-				}
-			}
-		} finally {
-			jar.close();
-		}
+//		JarFile jar = new JarFile(jarToOverride);
+//		try {
+//			String name;
+//			for(Enumeration<JarEntry> entries = jar.entries(); entries.hasMoreElements();) {
+//				name = entries.nextElement().getName();
+//				if (name.endsWith(".class")) {
+//					overrideClasses.add(name.substring(0, name.length()-6).replace('/', '.'));
+//				}
+//			}
+//		} finally {
+//			jar.close();
+//		}
+		
 	}
 	
-	private Class <?> resolveOnExit(Class<?> clazz, boolean resolve) {
-		if (resolve) {
-			this.resolveClass(clazz);
-		}
-		return clazz;
-	}
-
 	// NOTE: VerifyException is due to multiple classes of the same type in
 	// jars, need to override all classloader methods to fix...
 
 	@Override
-	public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-		Class<?> clazz = null;
-
-		clazz = findLoadedClass(name);
-		if(clazz != null) { return clazz; }
-
-		if (overrideClasses.contains(name)) {
-			for (File file : overrideJars) {
-				clazz = findClassInjar(name, file);
-				if (clazz != null) { return resolveOnExit(clazz, resolve); }
-			}
-			clazz = findClassInjar(name, jarToOverride);
-			assert clazz != null;
-			return resolveOnExit(clazz, resolve);
-		}
-
+	protected Class<?> findClass(String name) throws ClassNotFoundException {
 		try {
-			return getParent().loadClass(name);
-		} catch (ClassNotFoundException e) {
-			return resolveOnExit(findClass(name), resolve);
+		
+		Class<?> clazz;
+			
+		for (File file : modLoaderJars) {
+			clazz = findClassInjar(name, file);
+			if (clazz != null) { return clazz; }
+		}
+		
+		for (File file : overrideJars) {
+			clazz = findClassInjar(name, file);
+			if (clazz != null) { return clazz; }
+		}
+		clazz = findClassInjar(name, jarToOverride);
+		if (clazz != null) { return clazz; }
+		
+		return super.findClass(name);
+
+		} catch (NoClassDefFoundError e) {
+			e.printStackTrace();
+			throw e;
 		}
 	}
-
-
-
+	
 	private Class<?> findClassInjar(String name, File file) {
 		try {
 			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
@@ -138,5 +137,55 @@ public class MinecraftClassLoader extends ClassLoader {
 			e.printStackTrace();
 		}
 		return null;
+	}
+
+	@Override
+	public URL findResource(String name) {
+		URL url;
+
+		for (File file : overrideJars) {
+			url = findResourceInjar(name, file);
+			if (url != null) { return url; }
+		}
+		
+		url = findResourceInjar(name, jarToOverride);
+		if (url != null) { return url; }
+		
+		return super.findResource(name);
+	}
+
+	private URL findResourceInjar(String name, File file) {
+		try {
+			JarFile jar = new JarFile(file);
+			try {
+				JarEntry entry = jar.getJarEntry(name);
+				if (entry == null) return null;
+				
+				return new URL("jar:"+file.toURI().toURL()+"!/"+entry.getName());
+			} finally {
+				jar.close();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	/**
+	 * ModLoader expects the classloader to have an addURL method.
+	 */
+	protected void addURL(URL url) {
+		if (!url.getProtocol().startsWith("file")) {
+			throw new IllegalArgumentException("Only file protocol supported with url :"+url.toString());
+		}
+		File f = new File(url.getPath());
+		if (f.isFile()) {
+			String name = f.getName().toLowerCase();
+			if (name.endsWith(".java") || name.endsWith(".zip")) {
+				modLoaderJars.add(f);
+			}
+		}
+		
+		super.addURL(url);
 	}
 }
