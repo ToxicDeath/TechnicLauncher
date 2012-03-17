@@ -43,10 +43,8 @@ public class MinecraftClassLoader extends URLClassLoader {
 	private final File 											jarToOverride;
 	private final File[]										overrideJars;
 
-	//private URLClassLoader									urlLoader;
 	private ProtectionDomain								jarProtectionDomain;
 	private List<File>											modLoaderJars = new ArrayList<File>();
-//	private Set<String>											overrideClasses = new HashSet<String>();
 
 	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, File[] overrideJars) throws IOException {
 		super(new URL[0], parent);
@@ -59,20 +57,6 @@ public class MinecraftClassLoader extends URLClassLoader {
 				Policy.getPolicy().getPermissions(source),
 				this,
 				null);
-		
-//		JarFile jar = new JarFile(jarToOverride);
-//		try {
-//			String name;
-//			for(Enumeration<JarEntry> entries = jar.entries(); entries.hasMoreElements();) {
-//				name = entries.nextElement().getName();
-//				if (name.endsWith(".class")) {
-//					overrideClasses.add(name.substring(0, name.length()-6).replace('/', '.'));
-//				}
-//			}
-//		} finally {
-//			jar.close();
-//		}
-		
 	}
 	
 	// NOTE: VerifyException is due to multiple classes of the same type in
@@ -80,8 +64,6 @@ public class MinecraftClassLoader extends URLClassLoader {
 
 	@Override
 	protected Class<?> findClass(String name) throws ClassNotFoundException {
-		try {
-		
 		Class<?> clazz;
 			
 		for (File file : modLoaderJars) {
@@ -97,11 +79,6 @@ public class MinecraftClassLoader extends URLClassLoader {
 		if (clazz != null) { return clazz; }
 		
 		return super.findClass(name);
-
-		} catch (NoClassDefFoundError e) {
-			e.printStackTrace();
-			throw e;
-		}
 	}
 	
 	private Class<?> findClassInjar(String name, File file) {

@@ -116,7 +116,6 @@ public class Launcher {
 			System.setProperty("net.java.games.input.librarypath", nativesPath);
 
 			Class minecraftClass = classLoader.loadClass("net.minecraft.client.MinecraftApplet");
-			ClassLoader l = minecraftClass.getClassLoader();
 			return (Applet) minecraftClass.newInstance();
 		} catch (MalformedURLException ex) {
 			ex.printStackTrace();
