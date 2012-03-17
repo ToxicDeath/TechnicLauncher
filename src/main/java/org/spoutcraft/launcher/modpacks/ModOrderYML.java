@@ -73,7 +73,7 @@ public class ModOrderYML extends CachedYmlFile {
 		String name;
 		int priority; 
 		for(File modJar : modJars) {
-			name = modJar.getName().replaceFirst("\\.mod\\.jar$", "");
+			name = modJar.getName().replaceFirst("\\.jmod$", "");
 			
 			priority = order.indexOf(name);
 			if (priority == -1) {
