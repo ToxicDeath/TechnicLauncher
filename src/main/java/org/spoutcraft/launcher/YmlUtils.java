@@ -58,6 +58,8 @@ public class YmlUtils {
 
 			System.setProperty("http.agent", "");
 			con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/534.30 (KHTML, like Gecko) Chrome/12.0.742.100 Safari/534.30");
+			con.setConnectTimeout(5000);
+			con.setReadTimeout(20000);
 
 			// Download to temporary file
 			File tempFile = new File(GameUpdater.tempDir, ymlFile.getName());
