@@ -18,64 +18,100 @@ package org.spoutcraft.launcher;
 
 import java.applet.Applet;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FilenameFilter;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
 import org.spoutcraft.launcher.exception.CorruptedMinecraftJarException;
 import org.spoutcraft.launcher.exception.MinecraftVerifyException;
 import org.spoutcraft.launcher.exception.UnknownMinecraftException;
+import org.spoutcraft.launcher.modpacks.ModOrderYML;
 
 public class Launcher {
 
 	@SuppressWarnings("rawtypes")
-	public static Applet getMinecraftApplet() throws CorruptedMinecraftJarException, MinecraftVerifyException {
+	public static Applet getMinecraftApplet() 
+			throws CorruptedMinecraftJarException, MinecraftVerifyException {
 
 		File mcBinFolder = GameUpdater.binDir;
-
-		File spoutcraftJar = new File(mcBinFolder, "modpack.jar");
-		File minecraftJar = new File(mcBinFolder, "minecraft.jar");
+		
+		List<URL> classPath = new ArrayList<URL>();
+		
+		// core minecraft files
 		File jinputJar = new File(mcBinFolder, "jinput.jar");
 		File lwglJar = new File(mcBinFolder, "lwjgl.jar");
 		File lwjgl_utilJar = new File(mcBinFolder, "lwjgl_util.jar");
-
+		
+		classPath.add(fileToURL(jinputJar));
+		classPath.add(fileToURL(lwglJar));
+		classPath.add(fileToURL(lwjgl_utilJar));
+		
+		// libraries that mods depend on
 		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
 		Map<String, Object> libraries = build.getLibraries();
 
-		int librarycount = 4;
-		if (libraries != null) {
-			librarycount += libraries.size();
-		}
-		File[] files = new File[librarycount];
-
-		int index = 0;
 		if (libraries != null) {
 			Iterator<Entry<String, Object>> i = libraries.entrySet().iterator();
 			while (i.hasNext()) {
 				Entry<String, Object> lib = i.next();
 				File libraryFile = new File(mcBinFolder, "lib" + File.separator + lib.getKey() + ".jar");
-				files[index] = libraryFile;
-				index++;
+				classPath.add(fileToURL(libraryFile));
 			}
 		}
 
-		URL urls[] = new URL[5];
+		// minecraft.jar overrides
+		File[] foundJars = mcBinFolder.listFiles(new FilenameFilter() {
+			@Override
+			public boolean accept(File dir, String name) {
+				return name.toLowerCase().endsWith(".jmod");
+			}
+		});
+		
+		List<File> orderedModJars;
+		
+		if (foundJars != null) {
+			try {
+				orderedModJars = ModOrderYML.getModOrderYML().reorderMods(Arrays.asList(foundJars));
+			} catch (FileNotFoundException e) {
+				orderedModJars = new ArrayList<File>(Arrays.asList(foundJars));
+				Collections.reverse(orderedModJars);
+			}
+		} else {
+			orderedModJars = new ArrayList<File>();
+		}
+
+		File minecraftJar = new File(mcBinFolder, "minecraft.jar");
+
+		// backward compatibility with the basemods zip
+		File spoutcraftJar = new File(mcBinFolder, "modpack.jar");
+		
+		if (spoutcraftJar.canRead()) {
+			orderedModJars.add(0, spoutcraftJar);
+		}
 
 		try {
-			urls[0] = minecraftJar.toURI().toURL();
-			files[index + 0] = minecraftJar;
-			urls[1] = jinputJar.toURI().toURL();
-			files[index + 1] = jinputJar;
-			urls[2] = lwglJar.toURI().toURL();
-			files[index + 2] = lwglJar;
-			urls[3] = lwjgl_utilJar.toURI().toURL();
-			files[index + 3] = lwjgl_utilJar;
-			urls[4] = spoutcraftJar.toURI().toURL();
-
-			ClassLoader classLoader = new MinecraftClassLoader(urls, ClassLoader.getSystemClassLoader(), spoutcraftJar, files);
-
+			ClassLoader classLoader;
+			if (orderedModJars.size() > 0) {			
+				classLoader = new MinecraftClassLoader(
+						new URLClassLoader(classPath.toArray(new URL[0])), 
+						minecraftJar,
+						orderedModJars.toArray(new File[0]));
+			} else {
+				// vanilla minecraft, no need for a special classloader
+				classPath.add(0, minecraftJar.toURI().toURL());
+				classLoader = new URLClassLoader(classPath.toArray(new URL[0]));
+			}
+			
 			String nativesPath = new File(mcBinFolder, "natives").getAbsolutePath();
 			System.setProperty("org.lwjgl.librarypath", nativesPath);
 			System.setProperty("net.java.games.input.librarypath", nativesPath);
@@ -93,8 +129,18 @@ public class Launcher {
 			throw new CorruptedMinecraftJarException(ex);
 		} catch (VerifyError ex) {
 			throw new MinecraftVerifyException(ex);
-		} catch (Throwable t) {
-			throw new UnknownMinecraftException(t);
+		} catch (IOException e) {
+			throw new UnknownMinecraftException(e);
+		} 
+	}
+	
+	private static URL fileToURL(File f) {
+		try {
+			return f.toURI().toURL();
+		} catch (MalformedURLException e) {
+			throw new AssertionError("Never supposed to happen since converting from files.");
 		}
 	}
+	
+
 }

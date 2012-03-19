@@ -18,73 +18,151 @@ package org.spoutcraft.launcher;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.CodeSigner;
 import java.security.CodeSource;
-import java.util.HashMap;
+import java.security.Policy;
+import java.security.ProtectionDomain;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+/**
+ * Loads classes in a jar and searches a given list of jars for overidden 
+ * 	versions.
+ * 
+ * Extends URLClassLoader only for the sake of ModLoader, searching for resources
+ *   and classes is done here to enforce JAR search order.
+ *
+ */
 public class MinecraftClassLoader extends URLClassLoader {
-	private final HashMap<String, Class<?>>	loadedClasses	= new HashMap<String, Class<?>>(1000);
-	private File														spoutcraft		= null;
-	private final File[]										libraries;
+	private final File 											jarToOverride;
+	private final File[]										overrideJars;
 
-	public MinecraftClassLoader(URL[] urls, ClassLoader parent, File spoutcraft, File[] libraries) {
-		super(urls, parent);
-		this.spoutcraft = spoutcraft;
-		this.libraries = libraries;
-		for (File f : libraries) {
-			try {
-				this.addURL(f.toURI().toURL());
-			} catch (MalformedURLException e) {
-				e.printStackTrace();
-			}
-		}
+	private ProtectionDomain								jarProtectionDomain;
+	private List<File>											modLoaderJars = new ArrayList<File>();
+
+	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, File[] overrideJars) throws IOException {
+		super(new URL[0], parent);
+		this.jarToOverride = jarToOverride;
+		this.overrideJars = overrideJars;
+		
+		CodeSource source = new CodeSource(jarToOverride.toURI().toURL(), (CodeSigner[])null);
+		jarProtectionDomain = new ProtectionDomain(
+				source, 
+				Policy.getPolicy().getPermissions(source),
+				this,
+				null);
 	}
-
+	
 	// NOTE: VerifyException is due to multiple classes of the same type in
 	// jars, need to override all classloader methods to fix...
 
 	@Override
 	protected Class<?> findClass(String name) throws ClassNotFoundException {
-		Class<?> result = loadedClasses.get(name); // checks in cached classes
-		if (result != null) { return result; }
-
-		result = findClassInjar(name, spoutcraft);
-		if (result != null) { return result; }
-
-		for (File file : libraries) {
-			result = findClassInjar(name, file);
-			if (result != null) { return result; }
+		Class<?> clazz;
+			
+		for (File file : modLoaderJars) {
+			clazz = findClassInjar(name, file);
+			if (clazz != null) { return clazz; }
 		}
+		
+		for (File file : overrideJars) {
+			clazz = findClassInjar(name, file);
+			if (clazz != null) { return clazz; }
+		}
+		clazz = findClassInjar(name, jarToOverride);
+		if (clazz != null) { return clazz; }
+		
 		return super.findClass(name);
 	}
-
-	private Class<?> findClassInjar(String name, File file) throws ClassNotFoundException {
+	
+	private Class<?> findClassInjar(String name, File file) {
 		try {
+			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 			JarFile jar = new JarFile(file);
-			JarEntry entry = jar.getJarEntry(name.replace(".", "/") + ".class");
-			if (entry != null) {
-				InputStream is = jar.getInputStream(entry);
-				ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-				int next = is.read();
-				while (-1 != next) {
-					byteStream.write(next);
-					next = is.read();
-				}
-
-				byte classByte[] = byteStream.toByteArray();
-				Class<?> result = defineClass(name, classByte, 0, classByte.length, new CodeSource(file.toURI().toURL(), (CodeSigner[]) null));
-				loadedClasses.put(name, result);
-				return result;
+			try {
+				JarEntry entry = jar.getJarEntry(name.replace(".", "/") + ".class");
+				if (entry != null) {
+					InputStream is = jar.getInputStream(entry);
+					try {
+						byte[] buf = new byte[256];
+						
+						int count = is.read(buf);
+						while (-1 != count) {
+							byteStream.write(buf, 0, count);
+							count = is.read(buf);
+						}
+		
+						// using jarToOverride's ProtectionDomain
+						byte classByte[] = byteStream.toByteArray();
+						Class<?> result = defineClass(name, classByte, 0, classByte.length, 
+								jarProtectionDomain);
+						return result;
+					} finally {
+						is.close();
+					}
+				} 
+			}finally {
+				jar.close();
 			}
-		} catch (Exception e) {
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		return null;
+	}
+
+	@Override
+	public URL findResource(String name) {
+		URL url;
+
+		for (File file : overrideJars) {
+			url = findResourceInjar(name, file);
+			if (url != null) { return url; }
+		}
+		
+		url = findResourceInjar(name, jarToOverride);
+		if (url != null) { return url; }
+		
+		return super.findResource(name);
+	}
+
+	private URL findResourceInjar(String name, File file) {
+		try {
+			JarFile jar = new JarFile(file);
+			try {
+				JarEntry entry = jar.getJarEntry(name);
+				if (entry == null) return null;
+				
+				return new URL("jar:"+file.toURI().toURL()+"!/"+entry.getName());
+			} finally {
+				jar.close();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	/**
+	 * ModLoader expects the classloader to have an addURL method.
+	 */
+	protected void addURL(URL url) {
+		if (!url.getProtocol().startsWith("file")) {
+			throw new IllegalArgumentException("Only file protocol supported with url :"+url.toString());
+		}
+		File f = new File(url.getPath());
+		if (f.isFile()) {
+			String name = f.getName().toLowerCase();
+			if (name.endsWith(".java") || name.endsWith(".zip")) {
+				modLoaderJars.add(f);
+			}
+		}
+		
+		super.addURL(url);
 	}
 }
