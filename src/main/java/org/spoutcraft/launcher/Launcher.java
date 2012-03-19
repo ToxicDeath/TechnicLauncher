@@ -20,6 +20,7 @@ import java.applet.Applet;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -128,9 +129,9 @@ public class Launcher {
 			throw new CorruptedMinecraftJarException(ex);
 		} catch (VerifyError ex) {
 			throw new MinecraftVerifyException(ex);
-		} catch (Throwable t) {
-			throw new UnknownMinecraftException(t);
-		}
+		} catch (IOException e) {
+			throw new UnknownMinecraftException(e);
+		} 
 	}
 	
 	private static URL fileToURL(File f) {
