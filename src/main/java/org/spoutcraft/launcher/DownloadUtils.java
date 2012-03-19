@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Map;
@@ -19,9 +20,26 @@ import org.spoutcraft.launcher.async.DownloadListener;
 public class DownloadUtils {
 
 	public static Download downloadFile(String url, String output, String cacheName, String md5, DownloadListener listener) throws IOException {
+
+		File outputFile = new File(output);
+
+		if (Main.isDebug() && url.startsWith("file")) {
+			try {
+				
+				File localFile = new File(new URL(url).toURI());
+				if (localFile.canRead()) {
+					GameUpdater.copy(localFile, outputFile);
+					if (cacheName != null) {
+						GameUpdater.copy(localFile, new File(GameUpdater.cacheDir, cacheName));
+					}
+				}
+			} catch (URISyntaxException e) {
+				throw new IOException(String.format("Can't access file in local mirror: '%s'", url), e);
+			}
+		}
+		
 		if (Main.isOffline) return null;
 		int tries = SettingsUtil.getLoginTries();
-		File outputFile = new File(output);
 		File tempfile = File.createTempFile("file", null, GameUpdater.tempDir);
 		tempfile.mkdirs();
 		Download download = null;

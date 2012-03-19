@@ -24,6 +24,14 @@ public class MirrorUtils {
 
 	public static String getMirrorUrl(String mirrorURI, String fallbackUrl, DownloadListener listener) {
 		try {
+			if (Main.isDebug()) {
+				File localFile = new File(GameUpdater.modpackDir + File.separator + "mirror", 
+						mirrorURI);
+				if (localFile.canRead()) {
+					return localFile.toURI().toURL().toString();
+				}
+			}
+			
 			if (Main.isOffline) return null;
 
 			Map<String, Integer> mirrors = getMirrors();
