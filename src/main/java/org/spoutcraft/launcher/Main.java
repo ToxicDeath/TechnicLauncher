@@ -135,7 +135,7 @@ public class Main {
 			e.printStackTrace();
 		}
 
-		if (relaunch) {
+		if (relaunch && !isDebug()) {
 			ls.close();
 			// if (SettingsUtil.getMemorySelection() < 6) {
 			int mem = SettingsUtil.getMemorySelection();
