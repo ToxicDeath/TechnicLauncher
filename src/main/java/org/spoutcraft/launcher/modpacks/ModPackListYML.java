@@ -34,7 +34,7 @@ public class ModPackListYML {
 	private static final String									MODPACKS_YML						= "modpacks.yml";
 
 	private static final List<String>						RESOURCES								= new LinkedList();
-	private static final File										MODPACKS_YML_FILE				= new File(GameUpdater.workDir, MODPACKS_YML);
+	private static final File										MODPACKS_YML_FILE				= new File(GameUpdater.launcherDir, MODPACKS_YML);
 	private static final Object									key											= new Object();
 
 	public static final Map<String, String>			modpackMap;
@@ -131,7 +131,7 @@ public class ModPackListYML {
 
 		GameUpdater.setModpackDirectory(currentModPack);
 
-		currentModPackDirectory = new File(GameUpdater.workDir, currentModPack);
+		currentModPackDirectory = new File(GameUpdater.launcherDir, currentModPack);
 		currentModPackDirectory.mkdirs();
 
 		ModPackYML.updateModPackYML(true);
@@ -184,7 +184,7 @@ public class ModPackListYML {
 		if (Main.isOffline) return;
 		Map<String, String> fileMap = new HashMap<String, String>();
 		for (String modPack : modpackMap.keySet()) {
-			File modPackDir = new File(GameUpdater.workDir, modPack);
+			File modPackDir = new File(GameUpdater.launcherDir, modPack);
 			modPackDir.mkdirs();
 			fileMap.putAll(getModPackResources(modPack, modPackDir));
 		}
@@ -193,7 +193,7 @@ public class ModPackListYML {
 
 	public static void loadModpackLogos() {
 		for (String modPack : modpackMap.keySet()) {
-			File modPackDir = new File(GameUpdater.workDir, modPack);
+			File modPackDir = new File(GameUpdater.launcherDir, modPack);
 			File resourcesPath = new File(modPackDir, RESOURCES_PATH);
 			File modPackLogo = new File(resourcesPath, LOGO_PNG);
 			if (!modPackLogo.exists()) continue;

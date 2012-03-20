@@ -14,7 +14,7 @@ import org.bukkit.util.config.Configuration;
 public class MD5Utils {
 
 	private static final String								CHECKSUM_MD5	= "CHECKSUM.md5";
-	private static final File									CHECKSUM_FILE	= new File(GameUpdater.workDir, CHECKSUM_MD5);
+	private static final File									CHECKSUM_FILE	= new File(GameUpdater.launcherDir, CHECKSUM_MD5);
 	private static boolean										updated;
 	private static final Map<String, String>	md5Map				= new HashMap<String, String>();
 
@@ -107,7 +107,7 @@ public class MD5Utils {
 	}
 
 	public static boolean checksumPath(String filePath, String md5Path) {
-		return checksumPath(new File(GameUpdater.workDir, filePath), md5Path);
+		return checksumPath(new File(GameUpdater.launcherDir, filePath), md5Path);
 	}
 
 	public static boolean checksumCachePath(String filePath, String md5Path) {

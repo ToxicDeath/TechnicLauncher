@@ -32,7 +32,7 @@ import org.spoutcraft.launcher.Util;
  */
 public class ModOrderYML extends CachedYmlFile {
 	public static final String			MODORDER_YML	= "modorder.yml";
-	public static final File				MODORDER_FILE	= new File(GameUpdater.workDir, MODORDER_YML);
+	public static final File				MODORDER_FILE	= new File(GameUpdater.launcherDir, MODORDER_YML);
 
 	private static ModOrderYML modOrder = null;
 	

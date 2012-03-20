@@ -51,23 +51,23 @@ import SevenZip.LzmaAlone;
 
 public class GameUpdater implements DownloadListener {
 	public static final String	LAUNCHER_DIRECTORY	= "launcher";
-	public static final File		WORKING_DIRECTORY		= PlatformUtils.getWorkingDirectory();
 
 	/* Minecraft Updating Arguments */
 	public String								user								= "Player";
 	public String								downloadTicket			= "1";
 
 	/* Files */
-	public static File					modpackDir					= new File(WORKING_DIRECTORY, "");
-	public static File					binDir							= new File(WORKING_DIRECTORY, "bin");
-	public static final File		cacheDir						= new File(WORKING_DIRECTORY, "cache");
-	public static final File		tempDir							= new File(WORKING_DIRECTORY, "temp");
-	public static File					backupDir						= new File(WORKING_DIRECTORY, "backups");
-	public static final File		workDir							= new File(WORKING_DIRECTORY, LAUNCHER_DIRECTORY);
-	public static File					savesDir						= new File(WORKING_DIRECTORY, "saves");
-	public static File					modsDir							= new File(WORKING_DIRECTORY, "mods");
-	public static File					modconfigsDir				= new File(WORKING_DIRECTORY, "config");
-	public static File					resourceDir					= new File(WORKING_DIRECTORY, "resources");
+	public static File					workDir							= PlatformUtils.getWorkingDirectory();
+	public static File					modpackDir					= null;
+	public static File					binDir							= null;
+	public static final File		cacheDir						= new File(workDir, "cache");
+	public static final File		tempDir							= new File(workDir, "temp");
+	public static File					backupDir						= new File(workDir, "backups");
+	public static final File		launcherDir					= new File(workDir, LAUNCHER_DIRECTORY);
+	public static File					savesDir						= new File(workDir, "saves");
+	public static File					modsDir							= null;
+	public static File					modconfigsDir				= null;
+	public static File					resourceDir					= new File(workDir, "resources");
 
 	/* Minecraft Updating Arguments */
 	public final String					baseURL							= "http://s3.amazonaws.com/MinecraftDownload/";
@@ -80,7 +80,7 @@ public class GameUpdater implements DownloadListener {
 	}
 
 	public static void setModpackDirectory(String currentModPack) {
-		modpackDir = new File(WORKING_DIRECTORY, currentModPack);
+		modpackDir = new File(workDir, currentModPack);
 		modpackDir.mkdirs();
 
 		binDir = new File(modpackDir, "bin");
@@ -331,7 +331,7 @@ public class GameUpdater implements DownloadListener {
 		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
 
 		tempDir.mkdirs();
-		workDir.mkdirs();
+		launcherDir.mkdirs();
 
 		File mcCache = new File(cacheDir, "minecraft_" + build.getMinecraftVersion() + ".jar");
 		File updateMC = new File(tempDir.getPath() + File.separator + "minecraft.jar");
@@ -378,13 +378,13 @@ public class GameUpdater implements DownloadListener {
 		build.install();
 
 		// TODO: remove this once this build has been out for a few weeks
-		File spoutcraftVersion = new File(GameUpdater.workDir, "versionLauncher");
+		File spoutcraftVersion = new File(GameUpdater.launcherDir, "versionLauncher");
 		spoutcraftVersion.delete();
 	}
 
 	public boolean isSpoutcraftUpdateAvailable() {
-		if (!WORKING_DIRECTORY.exists()) return true;
-		if (!GameUpdater.workDir.exists()) return true;
+		if (!workDir.exists()) return true;
+		if (!GameUpdater.launcherDir.exists()) return true;
 
 		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
 
@@ -470,7 +470,7 @@ public class GameUpdater implements DownloadListener {
 			File path = (File) AccessController.doPrivileged(new PrivilegedExceptionAction() {
 				@Override
 				public Object run() throws Exception {
-					return WORKING_DIRECTORY;
+					return workDir;
 				}
 			});
 			if (!path.exists()) { return false; }
@@ -492,7 +492,7 @@ public class GameUpdater implements DownloadListener {
 			File path = (File) AccessController.doPrivileged(new PrivilegedExceptionAction() {
 				@Override
 				public Object run() throws Exception {
-					return WORKING_DIRECTORY;
+					return workDir;
 				}
 			});
 			if (!path.exists()) { return false; }
@@ -622,7 +622,7 @@ public class GameUpdater implements DownloadListener {
 
 	@Override
 	public void stateChanged(String fileName, float progress) {
-		fileName = fileName.replace(WORKING_DIRECTORY.getPath(), "");
+		fileName = fileName.replace(workDir.getPath(), "");
 		this.listener.stateChanged(fileName, progress);
 	}
 

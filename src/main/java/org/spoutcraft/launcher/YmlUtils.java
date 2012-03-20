@@ -21,7 +21,7 @@ public class YmlUtils {
 	}
 
 	public static boolean downloadRelativeYmlFile(String relativePath) {
-		return downloadYmlFile(relativePath, null, new File(GameUpdater.workDir, relativePath));
+		return downloadYmlFile(relativePath, null, new File(GameUpdater.launcherDir, relativePath));
 	}
 
 	public static boolean downloadYmlFile(String ymlUrl, String fallbackUrl, File ymlFile) {
