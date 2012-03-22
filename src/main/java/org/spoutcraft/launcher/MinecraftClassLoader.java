@@ -24,10 +24,10 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.CodeSigner;
 import java.security.CodeSource;
-import java.security.Policy;
 import java.security.ProtectionDomain;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Comparator;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -41,22 +41,25 @@ import java.util.jar.JarFile;
  */
 public class MinecraftClassLoader extends URLClassLoader {
 	private final File 											jarToOverride;
-	private final File[]										overrideJars;
 
 	private ProtectionDomain								jarProtectionDomain;
-	private List<File>											modLoaderJars = new ArrayList<File>();
+	private Set<File>												modLoaderJars;
 
-	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, File[] overrideJars) throws IOException {
+	public MinecraftClassLoader(ClassLoader parent, File jarToOverride, 
+			Comparator<File> modOrder) throws IOException {
 		super(new URL[0], parent);
 		this.jarToOverride = jarToOverride;
-		this.overrideJars = overrideJars;
+		this.modLoaderJars = new TreeSet<File>(modOrder);
 		
 		CodeSource source = new CodeSource(jarToOverride.toURI().toURL(), (CodeSigner[])null);
+
 		jarProtectionDomain = new ProtectionDomain(
 				source, 
-				Policy.getPolicy().getPermissions(source),
+				null,
 				this,
 				null);
+	
+		
 	}
 	
 	// NOTE: VerifyException is due to multiple classes of the same type in
@@ -71,10 +74,6 @@ public class MinecraftClassLoader extends URLClassLoader {
 			if (clazz != null) { return clazz; }
 		}
 		
-		for (File file : overrideJars) {
-			clazz = findClassInjar(name, file);
-			if (clazz != null) { return clazz; }
-		}
 		clazz = findClassInjar(name, jarToOverride);
 		if (clazz != null) { return clazz; }
 		
@@ -120,7 +119,7 @@ public class MinecraftClassLoader extends URLClassLoader {
 	public URL findResource(String name) {
 		URL url;
 
-		for (File file : overrideJars) {
+		for (File file : modLoaderJars) {
 			url = findResourceInjar(name, file);
 			if (url != null) { return url; }
 		}
@@ -151,7 +150,7 @@ public class MinecraftClassLoader extends URLClassLoader {
 	/**
 	 * ModLoader expects the classloader to have an addURL method.
 	 */
-	protected void addURL(URL url) {
+	public void addURL(URL url) {
 		if (!url.getProtocol().startsWith("file")) {
 			throw new IllegalArgumentException("Only file protocol supported with url :"+url.toString());
 		}

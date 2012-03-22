@@ -16,14 +16,22 @@
  */
 package org.spoutcraft.launcher;
 
+import java.awt.AWTPermission;
 import java.awt.Color;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.lang.management.ManagementPermission;
+import java.lang.reflect.ReflectPermission;
+import java.net.SocketPermission;
+import java.net.URISyntaxException;
+import java.security.Permissions;
+import java.security.Policy;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.PropertyPermission;
 
 import javax.swing.JFrame;
 import javax.swing.UIDefaults;
@@ -32,6 +40,7 @@ import javax.swing.UIManager;
 import org.spoutcraft.launcher.gui.LoadingScreen;
 import org.spoutcraft.launcher.gui.LoginForm;
 import org.spoutcraft.launcher.logs.SystemConsoleListener;
+import org.spoutcraft.launcher.sandbox.Sandbox;
 
 import com.beust.jcommander.JCommander;
 
@@ -104,6 +113,25 @@ public class Main {
 		}
 	}
 
+	
+	private static void startSandbox() {
+		//
+		Sandbox sandbox = Sandbox.startSandbox(PlatformUtils.getWorkingDirectory(),
+				// for main GUI
+				new AWTPermission("*"),
+				
+				new ReflectPermission("*"),
+				// for debugging
+				new ManagementPermission("monitor"),
+				
+				//network access
+				new PropertyPermission("http.agent", "write"),
+				new SocketPermission("*", "connect,resolve"),
+				
+				new RuntimePermission("*")
+				); 
+	}
+	
 	public static boolean isDebug() {
 		return java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().toString().contains("-agentlib:jdwp");
 	}
@@ -144,11 +172,14 @@ public class Main {
 				mem = 1024;
 			}
 			recursion.createNewFile();
-			if (isDebug()) System.exit(0);
-			else reboot("-Xmx" + mem + "m");
+			reboot("-Xmx" + mem + "m");
 			// }
 		}
 
+		startSandbox();
+		
+		
+		
 		if (PlatformUtils.getPlatform() == PlatformUtils.OS.macos) {
 			try {
 				System.setProperty("apple.laf.useScreenMenuBar", "true");

@@ -18,37 +18,41 @@ package org.spoutcraft.launcher;
 
 import java.applet.Applet;
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FilenameFilter;
+import java.io.FilePermission;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
+import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
+import java.util.PropertyPermission;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 import org.spoutcraft.launcher.exception.CorruptedMinecraftJarException;
 import org.spoutcraft.launcher.exception.MinecraftVerifyException;
 import org.spoutcraft.launcher.exception.UnknownMinecraftException;
-import org.spoutcraft.launcher.modpacks.ModOrderYML;
+import org.spoutcraft.launcher.sandbox.Sandbox;
 
 public class Launcher {
+	private static final String 		BIN_PATH = "bin";
+	
 
 	@SuppressWarnings("rawtypes")
-	public static Applet getMinecraftApplet() 
-			throws CorruptedMinecraftJarException, MinecraftVerifyException {
+	public static Applet getMinecraftApplet(File launcherPath, File[] Extralibs, 
+			Comparator<File> modOrder) throws CorruptedMinecraftJarException, MinecraftVerifyException {
 
-		File mcBinFolder = GameUpdater.binDir;
-		
+		File mcBinFolder = new File(launcherPath, BIN_PATH);
 		List<URL> classPath = new ArrayList<URL>();
 		
 		// core minecraft files
-		File jinputJar = new File(mcBinFolder, "jinput.jar");
+		final File jinputJar = new File(mcBinFolder, "jinput.jar");
 		File lwglJar = new File(mcBinFolder, "lwjgl.jar");
 		File lwjgl_utilJar = new File(mcBinFolder, "lwjgl_util.jar");
 		
@@ -57,67 +61,59 @@ public class Launcher {
 		classPath.add(fileToURL(lwjgl_utilJar));
 		
 		// libraries that mods depend on
-		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
-		Map<String, Object> libraries = build.getLibraries();
 
-		if (libraries != null) {
-			Iterator<Entry<String, Object>> i = libraries.entrySet().iterator();
-			while (i.hasNext()) {
-				Entry<String, Object> lib = i.next();
-				File libraryFile = new File(mcBinFolder, "lib" + File.separator + lib.getKey() + ".jar");
-				classPath.add(fileToURL(libraryFile));
+		if (Extralibs != null) {
+			for (File lib : Extralibs) {
+				classPath.add(fileToURL(lib));
 			}
-		}
-
-		// minecraft.jar overrides
-		File[] foundJars = mcBinFolder.listFiles(new FilenameFilter() {
-			@Override
-			public boolean accept(File dir, String name) {
-				return name.toLowerCase().endsWith(".jmod");
-			}
-		});
-		
-		List<File> orderedModJars;
-		
-		if (foundJars != null) {
-			try {
-				orderedModJars = ModOrderYML.getModOrderYML().reorderMods(Arrays.asList(foundJars));
-			} catch (FileNotFoundException e) {
-				orderedModJars = new ArrayList<File>(Arrays.asList(foundJars));
-				Collections.reverse(orderedModJars);
-			}
-		} else {
-			orderedModJars = new ArrayList<File>();
 		}
 
 		File minecraftJar = new File(mcBinFolder, "minecraft.jar");
 
-		// backward compatibility with the basemods zip
-		File spoutcraftJar = new File(mcBinFolder, "modpack.jar");
 		
-		if (spoutcraftJar.canRead()) {
-			orderedModJars.add(0, spoutcraftJar);
-		}
-
 		try {
-			ClassLoader classLoader;
-			if (orderedModJars.size() > 0) {			
-				classLoader = new MinecraftClassLoader(
-						new URLClassLoader(classPath.toArray(new URL[0])), 
-						minecraftJar,
-						orderedModJars.toArray(new File[0]));
-			} else {
-				// vanilla minecraft, no need for a special classloader
-				classPath.add(0, minecraftJar.toURI().toURL());
-				classLoader = new URLClassLoader(classPath.toArray(new URL[0]));
+			MinecraftClassLoader classLoader;
+			classLoader = new MinecraftClassLoader(
+					new URLClassLoader(classPath.toArray(new URL[0])), 
+					minecraftJar,
+					modOrder);
+
+			
+			if (Sandbox.isStarted()) {
+				Sandbox sandbox = Sandbox.getSandbox();
+					sandbox.addSpecial(
+							Launcher.class.getProtectionDomain().getCodeSource(),
+							
+							// needed for launch 
+							new PropertyPermission("org.lwjgl.librarypath", "write"),
+							new PropertyPermission("net.java.games.input.librarypath", "write"),
+							new PropertyPermission("user.dir", "write")
+							);
+					
+				// special permissions for libs
+				CodeSource source = codeSourceOf(classLoader, jinputJar);
+				if (source != null) {
+					sandbox.addSpecial(source, 
+							new FilePermission("<<ALL FILES>>", "read,execute"));
+				}
 			}
 			
+			// backward compatibility with the basemods zip
+			File spoutcraftJar = new File(mcBinFolder, "modpack.jar");
+			if (spoutcraftJar.canRead()) {
+				classLoader.addURL(spoutcraftJar.toURI().toURL());
+			}
+
 			String nativesPath = new File(mcBinFolder, "natives").getAbsolutePath();
 			System.setProperty("org.lwjgl.librarypath", nativesPath);
 			System.setProperty("net.java.games.input.librarypath", nativesPath);
 
-			Class minecraftClass = classLoader.loadClass("net.minecraft.client.MinecraftApplet");
-			return (Applet) minecraftClass.newInstance();
+			setMinecraftDirectory(classLoader, launcherPath.getAbsoluteFile());
+			// some mods try to use the current directory
+			System.setProperty("user.dir", launcherPath.getAbsolutePath());
+			
+			Class appletClass = classLoader.loadClass("net.minecraft.client.MinecraftApplet");
+			return (Applet) appletClass.newInstance();
 		} catch (MalformedURLException ex) {
 			ex.printStackTrace();
 			return null;
@@ -142,5 +138,76 @@ public class Launcher {
 		}
 	}
 	
+	/**
+	 * Return a CodeSource for a given jar by attempting to load a class from it.
+	 * 
+	 * @return the CodeSource, or null on error
+	 */
+	private static CodeSource codeSourceOf(ClassLoader loader, File jarFile)  {
+		try {
+			JarFile jar = new JarFile(jarFile);
+			try {
+				for (Enumeration<JarEntry> e = jar.entries(); e.hasMoreElements() ;) {
+					JarEntry entry = e.nextElement();
+					
+					String name = entry.getName(); 
+					if (name.endsWith(".class")) {
+						Class<?> clazz = loader.loadClass(name.substring(0, name.length()-7).replace("/", "."));
+						ProtectionDomain domain = clazz.getProtectionDomain();
+						if (domain == null) {
+							return null;
+						}
+						return domain.getCodeSource();
+					}
+				}
+				throw new IOException("file specified doesn't contain classes");
+			} finally {
+				jar.close();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+	/*
+	 * FIXME
+	 * This method works based on the assumption that there is only one field in
+	 * Minecraft.class that is a private static File, this may change in the 
+	 * future and so should be tested with new minecraft versions.
+	 */
+	private static void setMinecraftDirectory(ClassLoader loader, File directory) throws MinecraftVerifyException {
+		try {
+			Class<?> clazz = loader.loadClass("net.minecraft.client.Minecraft");
+			Field[] fields = clazz.getDeclaredFields();
+			
+			int fieldCount = 0;
+			Field mineDirField = null; 
+			for (Field field : fields) {
+				if (field.getType() == File.class) {
+					int mods = field.getModifiers();
+					if (Modifier.isStatic(mods) && Modifier.isPrivate(mods)) {
+						mineDirField = field;
+						fieldCount++;
+					}
+				}
+			}
+			if (fieldCount != 1) {
+				throw new MinecraftVerifyException("Cannot find directory field in minecraft");
+			}
+			
+			mineDirField.setAccessible(true);
+			mineDirField.set(null, directory);
+					
+		} catch (Exception e) {
+			throw new MinecraftVerifyException(e, "Cannot set directory in Minecraft class");
+		} 
+				
+		
+	}
 
+	
+	
 }
