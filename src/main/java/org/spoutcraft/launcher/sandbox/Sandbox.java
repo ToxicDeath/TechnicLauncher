@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FilePermission;
 import java.net.URISyntaxException;
 import java.security.AccessController;
-import java.security.BasicPermission;
 import java.security.CodeSource;
 import java.security.Permission;
 import java.security.PermissionCollection;
@@ -354,13 +353,5 @@ public class Sandbox {
 		
 
 		
-	}
-
-	private static class SandboxPermission extends BasicPermission {
-		private static final long	serialVersionUID	= 1L;
-
-		public SandboxPermission(String name) {
-			super(name);
-		}
 	}
 }
