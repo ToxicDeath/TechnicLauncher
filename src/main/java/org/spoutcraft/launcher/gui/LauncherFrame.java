@@ -23,16 +23,20 @@ import java.awt.Frame;
 import java.awt.Toolkit;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
+import java.io.File;
+import java.util.Map;
 
 import javax.swing.JOptionPane;
 
+import org.spoutcraft.launcher.GameUpdater;
 import org.spoutcraft.launcher.Launcher;
 import org.spoutcraft.launcher.MinecraftAppletEnglober;
 import org.spoutcraft.launcher.MinecraftUtils;
-import org.spoutcraft.launcher.PlatformUtils;
+import org.spoutcraft.launcher.ModpackBuild;
 import org.spoutcraft.launcher.Util;
 import org.spoutcraft.launcher.exception.CorruptedMinecraftJarException;
 import org.spoutcraft.launcher.exception.MinecraftVerifyException;
+import org.spoutcraft.launcher.modpacks.ModLibraryYML;
 import org.spoutcraft.launcher.modpacks.ModPackListYML;
 import org.spoutcraft.launcher.modpacks.ModPackYML;
 
@@ -67,8 +71,15 @@ public class LauncherFrame extends Frame implements WindowListener {
 
 	public int runGame(String user, String session, String downloadTicket, String mcpass) {
 		Applet applet = null;
+
+		ModpackBuild build = ModpackBuild.getSpoutcraftBuild();
+		
 		try {
-			applet = Launcher.getMinecraftApplet();
+			File launcherPath = GameUpdater.modpackDir;
+			Util.log("Initializing Launcher from '%s'", launcherPath.getCanonicalPath());
+			applet = Launcher.getMinecraftApplet(launcherPath, 
+					build.getLibraryFiles(), 
+					ModLibraryYML.getComparator());
 		} catch (CorruptedMinecraftJarException corruption) {
 			corruption.printStackTrace();
 		} catch (MinecraftVerifyException verify) {
@@ -94,7 +105,6 @@ public class LauncherFrame extends Frame implements WindowListener {
 
 		minecraft = new MinecraftAppletEnglober(applet);
 
-		String launcherPath = String.format("%s/%s", PlatformUtils.LAUNCHER_DIR, ModPackListYML.currentModPack);
 
 		minecraft.addParameter("username", user);
 		minecraft.addParameter("sessionid", session);
@@ -102,9 +112,6 @@ public class LauncherFrame extends Frame implements WindowListener {
 		minecraft.addParameter("mppass", mcpass);
 		minecraft.addParameter("spoutcraftlauncher", "true");
 		minecraft.addParameter("stand-alone", String.valueOf(MinecraftUtils.getOptions().isPortable()));
-		minecraft.addParameter("portable", String.valueOf(MinecraftUtils.getOptions().isPortable()));
-		minecraft.addParameter("directory", launcherPath);
-		Util.log("Loading Launcher from '%s'", launcherPath);
 		if (MinecraftUtils.getOptions().getServer() != null) {
 			minecraft.addParameter("server", MinecraftUtils.getOptions().getServer());
 			if (MinecraftUtils.getOptions().getPort() != null) {

@@ -1,6 +1,11 @@
 package org.spoutcraft.launcher;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.bukkit.util.config.Configuration;
 import org.spoutcraft.launcher.async.DownloadListener;
@@ -78,6 +83,23 @@ public class ModpackBuild {
 
 	public Map<String, Object> getLibraries() {
 		return libraries;
+	}
+	
+	public File[] getLibraryFiles() {
+		Map<String, Object> libraries = getLibraries();
+
+		List<File> files = new ArrayList<File>();
+		
+		if (libraries != null) {
+			Iterator<Entry<String, Object>> i = libraries.entrySet().iterator();
+			while (i.hasNext()) {
+				Entry<String, Object> lib = i.next();
+				File libraryFile = new File(GameUpdater.binDir, "lib" + File.separator + lib.getKey() + ".jar");
+				files.add(libraryFile);
+			}
+		}
+		
+		return files.toArray(new File[0]);
 	}
 
 	public Map<String, Object> getMods() {
