@@ -43,6 +43,8 @@ import org.spoutcraft.launcher.sandbox.Sandbox;
 public class Launcher {
 	private static final String 		BIN_PATH = "bin";
 	
+	public static Class<?>	mcClass	= null, appletClass = null;
+	public static Field			mcField	= null;
 
 	@SuppressWarnings("rawtypes")
 	public static Applet getMinecraftApplet(File launcherPath, File[] Extralibs, 
@@ -109,10 +111,15 @@ public class Launcher {
 			System.setProperty("net.java.games.input.librarypath", nativesPath);
 
 			setMinecraftDirectory(classLoader, launcherPath.getAbsoluteFile());
+			int a = 1;
+
 			// some mods try to use the current directory
 			System.setProperty("user.dir", launcherPath.getAbsolutePath());
 			
-			Class appletClass = classLoader.loadClass("net.minecraft.client.MinecraftApplet");
+			appletClass = classLoader.loadClass("net.minecraft.client.MinecraftApplet");
+			mcClass = classLoader.loadClass("net.minecraft.client.Minecraft");
+			mcField = appletClass.getDeclaredFields()[1];
+
 			return (Applet) appletClass.newInstance();
 		} catch (MalformedURLException ex) {
 			ex.printStackTrace();
@@ -137,7 +144,7 @@ public class Launcher {
 			throw new AssertionError("Never supposed to happen since converting from files.");
 		}
 	}
-	
+
 	/**
 	 * Return a CodeSource for a given jar by attempting to load a class from it.
 	 * 
@@ -173,18 +180,17 @@ public class Launcher {
 	}
 	
 	/*
-	 * FIXME
 	 * This method works based on the assumption that there is only one field in
-	 * Minecraft.class that is a private static File, this may change in the 
+	 * Minecraft.class that is a private static File, this may change in the
 	 * future and so should be tested with new minecraft versions.
 	 */
 	private static void setMinecraftDirectory(ClassLoader loader, File directory) throws MinecraftVerifyException {
 		try {
 			Class<?> clazz = loader.loadClass("net.minecraft.client.Minecraft");
 			Field[] fields = clazz.getDeclaredFields();
-			
+
 			int fieldCount = 0;
-			Field mineDirField = null; 
+			Field mineDirField = null;
 			for (Field field : fields) {
 				if (field.getType() == File.class) {
 					int mods = field.getModifiers();
@@ -194,20 +200,16 @@ public class Launcher {
 					}
 				}
 			}
-			if (fieldCount != 1) {
-				throw new MinecraftVerifyException("Cannot find directory field in minecraft");
+			if (fieldCount != 1) { 
+				throw new MinecraftVerifyException("Cannot find directory field in minecraft"); 
 			}
-			
+
 			mineDirField.setAccessible(true);
 			mineDirField.set(null, directory);
-					
+
 		} catch (Exception e) {
 			throw new MinecraftVerifyException(e, "Cannot set directory in Minecraft class");
-		} 
-				
-		
-	}
+		}
 
-	
-	
+	}
 }
