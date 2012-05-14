@@ -80,6 +80,7 @@ import org.spoutcraft.launcher.SettingsUtil;
 import org.spoutcraft.launcher.SpoutFocusTraversalPolicy;
 import org.spoutcraft.launcher.Util;
 import org.spoutcraft.launcher.async.DownloadListener;
+import org.spoutcraft.launcher.exception.AccountMigratedException;
 import org.spoutcraft.launcher.exception.BadLoginException;
 import org.spoutcraft.launcher.exception.MCNetworkException;
 import org.spoutcraft.launcher.exception.MinecraftUserNotPremiumException;
@@ -126,7 +127,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 	Container																	loginPane					= new Container();
 	Container																	offlinePane				= new Container();
 	// private final JLabel lblLogo;
-	private final JComboBox<String>						modpackList;
+	private final JComboBox						modpackList;
 
 	public LoginForm() {
 		loadLauncherData();
@@ -176,7 +177,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 			}
 		}
 		String[] itemArray = new String[i];
-		modpackList = new JComboBox<String>(items.toArray(itemArray));
+		modpackList = new JComboBox(items.toArray(itemArray));
 		modpackList.setBounds(10, 10, 328, 100);
 		ComboBoxRenderer renderer = new ComboBoxRenderer();
 		renderer.setPreferredSize(new Dimension(200, 110));
@@ -422,6 +423,9 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 		}
 
 		fileName = fileName.replace(workingDir, "");
+		if (fileName.contains("?")) {
+			fileName = fileName.substring(0, fileName.indexOf("?"));
+		}
 
 		if (fileName.length() > 60) {
 			fileName = fileName.substring(0, 60) + "...";
@@ -660,6 +664,10 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 				try {
 					values = MinecraftUtils.doLogin(user, pass, progressBar);
 					return true;
+				} catch (AccountMigratedException e) {
+					JOptionPane.showMessageDialog(getParent(), "Account migrated, use e-mail as username");
+					this.cancel(true);
+					progressBar.setVisible(false);
 				} catch (BadLoginException e) {
 					JOptionPane.showMessageDialog(getParent(), "Incorrect usernameField/passwordField combination");
 					this.cancel(true);
@@ -737,7 +745,7 @@ public class LoginForm extends JFrame implements ActionListener, DownloadListene
 				} catch (NoSuchAlgorithmException e) {
 				}
 
-				gameUpdater.user = values[2].trim();
+				gameUpdater.user = usernameField.getSelectedItem().toString(); //values[2].trim();
 				gameUpdater.downloadTicket = values[1].trim();
 				if (!cmdLine) {
 					String password = new String(passwordField.getPassword());
