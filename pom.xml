@@ -81,6 +81,22 @@
 			<version>1.20</version>
 			<scope>compile</scope>
 		</dependency>
+		<dependency>
+		  <groupId>com.github.insubstantial</groupId>
+		  <artifactId>substance</artifactId>
+		  <version>7.1</version>
+		</dependency>
+		<dependency>
+		  <groupId>com.github.insubstantial</groupId>
+		  <artifactId>trident</artifactId>
+		  <version>7.1</version>
+		  <classifier>swing</classifier>
+		</dependency>
+		<dependency>
+		  <groupId>com.miglayout</groupId>
+		  <artifactId>miglayout-swing</artifactId>
+		  <version>4.2</version>
+		</dependency>
 	</dependencies>
    
 	<build>
